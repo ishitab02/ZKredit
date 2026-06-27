@@ -1,16 +1,16 @@
-# CredAttest
+# ZKredit
 
 **Privacy-preserving risk attestation layer for Stellar lending and RWA protocols.**
 
-CredAttest converts a Stellar wallet's existing on-chain behavioral history (account age, payment patterns, asset holdings, counterparty diversity, anchor relationships) into a portable, composable risk signal that any Stellar lending protocol can consume through a standard Soroban contract interface — without exposing the raw wallet history to the lender.
+ZKredit converts a Stellar wallet's existing on-chain behavioral history (account age, payment patterns, asset holdings, counterparty diversity, anchor relationships) into a portable, composable risk signal that any Stellar lending protocol can consume through a standard Soroban contract interface — without exposing the raw wallet history to the lender.
 
-This unlocks undercollateralized lending for Stellar's emerging-market user base, who have years of on-chain payment history but no traditional credit footprint. RedStone solved Stellar's price oracle problem. CredAttest solves the borrower-risk problem.
+This unlocks undercollateralized lending for Stellar's emerging-market user base, who have years of on-chain payment history but no traditional credit footprint. RedStone solved Stellar's price oracle problem. ZKredit solves the borrower-risk problem.
 
 ---
 
 ## What This Is
 
-A composable on-chain primitive, not a credit bureau. The output is a confidence-scored risk bucket (5 levels), not a credit score. Lending protocols decide their own risk tolerance and lending terms; CredAttest just publishes the signal.
+A composable on-chain primitive, not a credit bureau. The output is a confidence-scored risk bucket (5 levels), not a credit score. Lending protocols decide their own risk tolerance and lending terms; ZKredit just publishes the signal.
 
 Three pieces compose the system:
 
@@ -56,7 +56,7 @@ The attestation carries both hashes. The `zk_verified` flag tells consumers whet
 
 # 2. Clone and bootstrap
 git clone <repo>
-cd credattest
+cd zkredit
 make bootstrap        # installs all deps across /contracts, /ml, /api, /frontend
 
 # 3. Configure environment
@@ -79,7 +79,7 @@ The dashboard runs at `http://localhost:5173`. Enter any Stellar testnet address
 ## Repository Layout
 
 ```
-credattest/
+zkredit/
 ├── contracts/          # Soroban Rust contracts
 │   ├── risk-attestation/
 │   ├── attestor-registry/
