@@ -6,3 +6,29 @@ CLAUDE.md
 .agents
 PLAN.md
 opencode.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# --- Trained model + ZK circuit artifacts ---
+model_store/
+*.joblib
+*.srs
+
+# --- Secrets / local config ---
+.env
+.env.local
+*.key
+*-service-account.json
+
+# Local ingest seed data (not committed)
+/data/
