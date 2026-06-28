@@ -1,0 +1,133 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: zkredit-postgres
+    environment:
+      POSTGRES_USER: zkredit
+      POSTGRES_PASSWORD: zkredit
+      POSTGRES_DB: zkredit
+    ports:
+      - "5432:5432"
+    volumes:
+      - zkredit-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "zkredit", "-d", "zkredit"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - zkredit
+
+  redis:
+    image: redis:7-alpine
+    container_name: zkredit-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - zkredit-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+    networks:
+      - zkredit
+
+  # Placeholder services below are disabled or minimal for Day 1.
+  # They are wired to depend on postgres and redis via profiles so they do not start by default.
+
+  ml-api:
+    profiles:
+      - ml
+    build:
+      context: ..
+      dockerfile: ./Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://zkredit:zkredit@postgres:5432/zkredit}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "echo", "ml-api placeholder healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - zkredit
+
+  ezkl-worker:
+    profiles:
+      - ml
+    image: alpine:latest
+    command: ["echo", "ezkl-worker placeholder disabled"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - zkredit
+    deploy:
+      replicas: 0
+
+  frontend:
+    profiles:
+      - frontend
+    build:
+      context: ../frontend
+      dockerfile: ./Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "echo", "frontend placeholder healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - zkredit
+
+  prometheus:
+    profiles:
+      - observability
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    networks:
+      - zkredit
+
+  grafana:
+    profiles:
+      - observability
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - zkredit-grafana-data:/var/lib/grafana
+    networks:
+      - zkredit
+
+volumes:
+  zkredit-postgres-data:
+  zkredit-redis-data:
+  zkredit-grafana-data:
+
+networks:
+  zkredit:
+    driver: bridge
