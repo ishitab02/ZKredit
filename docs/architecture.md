@@ -167,7 +167,6 @@ Storage key: `Attestation(Address) -> AttestationData` in persistent storage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AttestationData {
     pub wallet: Address,
-    pub display_score: u32,      // 300-850 display score (population percentile mapped)
     pub risk_bucket: u32,        // 0=VERY_LOW, 1=LOW, 2=MEDIUM, 3=HIGH, 4=VERY_HIGH
     pub confidence: u32,         // basis points, 0-10000
     pub full_model_hash: BytesN<32>,   // SHA-256 of off-chain scoring result
@@ -177,13 +176,25 @@ pub struct AttestationData {
     pub attestor: Address,
     pub issued_at: u64,
     pub expires_at: u64,
+    pub kyc_verified: bool,                       // attestor-certified KYC status
+    pub identity_commitment: Option<BytesN<32>>,  // Poseidon commitment → multi-wallet group
 }
 ```
+
+> **Struct freeze note (Day 2, extended Day 5):** the KYC + multi-wallet plan
+> added `kyc_verified` and `identity_commitment` to the frozen struct. The
+> earlier `display_score` (300–850) field is **deferred** — the frontend derives
+> a display score from `risk_bucket` + `confidence` for now; it can be added as
+> an additive field later without breaking consumers.
 
 Public functions:
 
 ```rust
 fn __constructor(env: Env, admin: Address);
+
+fn set_attestor_registry(env: Env, contract_id: Address) -> Result<(), Error>;
+fn set_wallet_identity(env: Env, contract_id: Address) -> Result<(), Error>;
+fn register_verification_key(env: Env, model_hash: BytesN<32>, vk_bytes: Bytes) -> Result<(), Error>;
 
 fn attest_with_hash(
     env: Env,
@@ -198,6 +209,7 @@ fn attest_with_proof(
     proof_bytes: Bytes,
 ) -> Result<(), Error>;
 
+// Resolves identity_commitment → shared group attestation when WalletIdentity is wired.
 fn get_attestation(env: Env, wallet: Address) -> Option<AttestationData>;
 ```
 

@@ -10,6 +10,14 @@ pub trait AttestorRegistryInterface {
     fn is_attestor(env: Env, attestor: Address) -> bool;
 }
 
+/// Minimal cross-contract view of WalletIdentity used for group-score
+/// resolution. Defined locally (rather than importing the crate) to keep
+/// contracts as `cdylib`-only and avoid circular crate dependencies.
+#[contractclient(name = "WalletIdentityClient")]
+pub trait WalletIdentityInterface {
+    fn get_group_attestation(env: Env, commitment: BytesN<32>) -> Option<AttestationData>;
+}
+
 #[contract]
 pub struct RiskAttestation;
 
@@ -38,6 +46,22 @@ impl RiskAttestation {
             .instance()
             .get(&DataKey::AttestorRegistry)
             .ok_or(Error::AttestorNotRegistered)
+    }
+
+    /// Set the WalletIdentity contract address. Admin-only. Optional: when set,
+    /// `get_attestation` resolves a wallet's `identity_commitment` to the shared
+    /// group attestation (multi-wallet reputation sharing).
+    pub fn set_wallet_identity(env: Env, contract_id: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::WalletIdentityContract, &contract_id);
+        Ok(())
     }
 
     /// Register a Groth16 verification key for a distilled model.
@@ -144,9 +168,32 @@ impl RiskAttestation {
         Ok(())
     }
 
+    /// Read a wallet's attestation.
+    ///
+    /// Multi-wallet resolution (Option A — shared group score): if the wallet's
+    /// own attestation carries an `identity_commitment` and a WalletIdentity
+    /// contract is configured, the shared group attestation is returned instead,
+    /// so any wallet in the group surfaces the group's best score. The querying
+    /// wallet's own record is never exposed when a group score is available.
     pub fn get_attestation(env: Env, wallet: Address) -> Option<AttestationData> {
-        env.storage()
+        let own: Option<AttestationData> = env
+            .storage()
             .persistent()
-            .get(&DataKey::Attestation(wallet))
+            .get(&DataKey::Attestation(wallet));
+
+        let data = own?;
+        if let Some(commitment) = data.identity_commitment.clone() {
+            if let Some(wi_id) = env
+                .storage()
+                .instance()
+                .get::<DataKey, Address>(&DataKey::WalletIdentityContract)
+            {
+                let wi = WalletIdentityClient::new(&env, &wi_id);
+                if let Some(group) = wi.get_group_attestation(&commitment) {
+                    return Some(group);
+                }
+            }
+        }
+        Some(data)
     }
 }

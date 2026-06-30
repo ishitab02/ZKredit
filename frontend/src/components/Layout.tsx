@@ -15,6 +15,9 @@ export function Layout() {
             <Link to="/lending" className="hover:text-purple-600">
               Lending Demo
             </Link>
+            <Link to="/identity" className="hover:text-purple-600">
+              Identity
+            </Link>
           </div>
         </nav>
       </header>

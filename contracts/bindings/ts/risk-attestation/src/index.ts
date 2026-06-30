@@ -89,6 +89,13 @@ kyc_verified: boolean;
 export interface Client {
   /**
    * Construct and simulate a get_attestation transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Read a wallet's attestation.
+   * 
+   * Multi-wallet resolution (Option A — shared group score): if the wallet's
+   * own attestation carries an `identity_commitment` and a WalletIdentity
+   * contract is configured, the shared group attestation is returned instead,
+   * so any wallet in the group surfaces the group's best score. The querying
+   * wallet's own record is never exposed when a group score is available.
    */
   get_attestation: ({wallet}: {wallet: string}, options?: MethodOptions) => Promise<AssembledTransaction<Option<AttestationData>>>
 
@@ -109,6 +116,14 @@ export interface Client {
    * path with `zk_verified = false` (DG1 fallback behaviour).
    */
   attest_with_proof: ({wallet, data, proof_bytes}: {wallet: string, data: AttestationData, proof_bytes: Buffer}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
+   * Construct and simulate a set_wallet_identity transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Set the WalletIdentity contract address. Admin-only. Optional: when set,
+   * `get_attestation` resolves a wallet's `identity_commitment` to the shared
+   * group attestation (multi-wallet reputation sharing).
+   */
+  set_wallet_identity: ({contract_id}: {contract_id: string}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a set_attestor_registry transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -145,9 +160,10 @@ export class Client extends ContractClient {
   constructor(public readonly options: ContractClientOptions) {
     super(
       new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
-        "AAAAAAAAAAAAAAAPZ2V0X2F0dGVzdGF0aW9uAAAAAAEAAAAAAAAABndhbGxldAAAAAAAEwAAAAEAAAPoAAAH0AAAAA9BdHRlc3RhdGlvbkRhdGEA",
+        "AAAAAAAAAYdSZWFkIGEgd2FsbGV0J3MgYXR0ZXN0YXRpb24uCgpNdWx0aS13YWxsZXQgcmVzb2x1dGlvbiAoT3B0aW9uIEEg4oCUIHNoYXJlZCBncm91cCBzY29yZSk6IGlmIHRoZSB3YWxsZXQncwpvd24gYXR0ZXN0YXRpb24gY2FycmllcyBhbiBgaWRlbnRpdHlfY29tbWl0bWVudGAgYW5kIGEgV2FsbGV0SWRlbnRpdHkKY29udHJhY3QgaXMgY29uZmlndXJlZCwgdGhlIHNoYXJlZCBncm91cCBhdHRlc3RhdGlvbiBpcyByZXR1cm5lZCBpbnN0ZWFkLApzbyBhbnkgd2FsbGV0IGluIHRoZSBncm91cCBzdXJmYWNlcyB0aGUgZ3JvdXAncyBiZXN0IHNjb3JlLiBUaGUgcXVlcnlpbmcKd2FsbGV0J3Mgb3duIHJlY29yZCBpcyBuZXZlciBleHBvc2VkIHdoZW4gYSBncm91cCBzY29yZSBpcyBhdmFpbGFibGUuAAAAAA9nZXRfYXR0ZXN0YXRpb24AAAAAAQAAAAAAAAAGd2FsbGV0AAAAAAATAAAAAQAAA+gAAAfQAAAAD0F0dGVzdGF0aW9uRGF0YQA=",
         "AAAAAAAAAIdPcHRpbWlzdGljIGhhc2gtYW5jaG9yZWQgYXR0ZXN0YXRpb24gcGF0aC4gIFN0b3JlcyB0aGUgYXR0ZXN0YXRpb24Kd2l0aG91dCBvbi1jaGFpbiBwcm9vZiB2ZXJpZmljYXRpb24uICBgemtfdmVyaWZpZWRgIGlzIGFsd2F5cyBmYWxzZS4AAAAAEGF0dGVzdF93aXRoX2hhc2gAAAACAAAAAAAAAAZ3YWxsZXQAAAAAABMAAAAAAAAABGRhdGEAAAfQAAAAD0F0dGVzdGF0aW9uRGF0YQAAAAABAAAD6QAAAAIAAAAD",
         "AAAAAAAAATxGdWxsIEdyb3RoMTYgb24tY2hhaW4gdmVyaWZpY2F0aW9uIHBhdGguCgpJZiBhIHZlcmlmaWNhdGlvbiBrZXkgZm9yIGBkYXRhLmRpc3RpbGxlZF9tb2RlbF9oYXNoYCBoYXMgYmVlbiByZWdpc3RlcmVkCnZpYSBgcmVnaXN0ZXJfdmVyaWZpY2F0aW9uX2tleWAsIHRoZSBwcm9vZiBpcyB2ZXJpZmllZCBvbi1jaGFpbiBhbmQKYHprX3ZlcmlmaWVkYCBpcyBzZXQgdG8gYHRydWVgLiAgT3RoZXJ3aXNlIGZhbGxzIGJhY2sgdG8gdGhlIGhhc2gtYW5jaG9yZWQKcGF0aCB3aXRoIGB6a192ZXJpZmllZCA9IGZhbHNlYCAoREcxIGZhbGxiYWNrIGJlaGF2aW91cikuAAAAEWF0dGVzdF93aXRoX3Byb29mAAAAAAAAAwAAAAAAAAAGd2FsbGV0AAAAAAATAAAAAAAAAARkYXRhAAAH0AAAAA9BdHRlc3RhdGlvbkRhdGEAAAAAAAAAAAtwcm9vZl9ieXRlcwAAAAAOAAAAAQAAA+kAAAACAAAAAw==",
+        "AAAAAAAAAMdTZXQgdGhlIFdhbGxldElkZW50aXR5IGNvbnRyYWN0IGFkZHJlc3MuIEFkbWluLW9ubHkuIE9wdGlvbmFsOiB3aGVuIHNldCwKYGdldF9hdHRlc3RhdGlvbmAgcmVzb2x2ZXMgYSB3YWxsZXQncyBgaWRlbnRpdHlfY29tbWl0bWVudGAgdG8gdGhlIHNoYXJlZApncm91cCBhdHRlc3RhdGlvbiAobXVsdGktd2FsbGV0IHJlcHV0YXRpb24gc2hhcmluZykuAAAAABNzZXRfd2FsbGV0X2lkZW50aXR5AAAAAAEAAAAAAAAAC2NvbnRyYWN0X2lkAAAAABMAAAABAAAD6QAAAAIAAAAD",
         "AAAAAAAAADZTZXQgdGhlIEF0dGVzdG9yUmVnaXN0cnkgY29udHJhY3QgYWRkcmVzcy4gQWRtaW4tb25seS4AAAAAABVzZXRfYXR0ZXN0b3JfcmVnaXN0cnkAAAAAAAABAAAAAAAAAAtjb250cmFjdF9pZAAAAAATAAAAAQAAA+kAAAACAAAAAw==",
         "AAAAAAAAALFSZWdpc3RlciBhIEdyb3RoMTYgdmVyaWZpY2F0aW9uIGtleSBmb3IgYSBkaXN0aWxsZWQgbW9kZWwuCkFkbWluLW9ubHkuICBNdXN0IGJlIGNhbGxlZCBiZWZvcmUgYGF0dGVzdF93aXRoX3Byb29mYCBjYW4gc2V0CmB6a192ZXJpZmllZCA9IHRydWVgIGZvciBhdHRlc3RhdGlvbnMgdXNpbmcgdGhhdCBtb2RlbC4AAAAAAAAZcmVnaXN0ZXJfdmVyaWZpY2F0aW9uX2tleQAAAAAAAAIAAAAAAAAACm1vZGVsX2hhc2gAAAAAA+4AAAAgAAAAAAAAAAh2a19ieXRlcwAAAA4AAAABAAAD6QAAAAIAAAAD",
         "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAADQAAAAAAAAAPQWxyZWFkeUF0dGVzdGVkAAAAAAEAAAAAAAAADU5vdEF1dGhvcml6ZWQAAAAAAAACAAAAAAAAABNBdHRlc3RhdGlvbk5vdEZvdW5kAAAAAAMAAAAAAAAAEkF0dGVzdGF0aW9uRXhwaXJlZAAAAAAABAAAAAAAAAAMSW52YWxpZFByb29mAAAABQAAAAAAAAAVQXR0ZXN0b3JOb3RSZWdpc3RlcmVkAAAAAAAABgAAAAAAAAAPQXR0ZXN0b3JSZXZva2VkAAAAAAcAAAAAAAAAD01vZGVsRGVwcmVjYXRlZAAAAAAIAAAAAAAAAA1JbnZhbGlkSW5wdXRzAAAAAAAACQAAAAAAAAAOS3ljTm90VmVyaWZpZWQAAAAAAAoAAABYV2FsbGV0IHRyaWVkIHRvIGpvaW4gYSBncm91cCB3aXRoIGEgY29tbWl0bWVudCBkaWZmZXJlbnQgZnJvbSBvbmUgaXQgYWxyZWFkeSByZWdpc3RlcmVkLgAAABJDb21taXRtZW50Q29uZmxpY3QAAAAAAAsAAAAAAAAADkFscmVhZHlJbkdyb3VwAAAAAAAMAAAAPUNhbGxlciBpcyBub3QgYW4gYXV0aG9yaXplZCBhdHRlc3RvciBpbiB0aGUgQXR0ZXN0b3JSZWdpc3RyeS4AAAAAAAAUVW5hdXRob3JpemVkQXR0ZXN0b3IAAAAN",
@@ -161,6 +177,7 @@ export class Client extends ContractClient {
     get_attestation: this.txFromJSON<Option<AttestationData>>,
         attest_with_hash: this.txFromJSON<Result<void>>,
         attest_with_proof: this.txFromJSON<Result<void>>,
+        set_wallet_identity: this.txFromJSON<Result<void>>,
         set_attestor_registry: this.txFromJSON<Result<void>>,
         register_verification_key: this.txFromJSON<Result<void>>
   }

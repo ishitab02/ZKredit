@@ -24,6 +24,7 @@ WASM_DIR="${REPO_ROOT}/contracts/target/wasm32v1-none/release"
 REGISTRY_WASM="${WASM_DIR}/zkredit_attestor_registry.wasm"
 RISK_WASM="${WASM_DIR}/zkredit_risk_attestation.wasm"
 LENDING_WASM="${WASM_DIR}/zkredit_mock_lending_pool.wasm"
+WALLET_IDENTITY_WASM="${WASM_DIR}/zkredit_wallet_identity.wasm"
 
 log() {
     echo "[deploy-testnet] $*" >&2
@@ -91,7 +92,8 @@ invoke() {
 if [ -f "${ENV_FILE}" ] && [ "${ZKREDIT_FORCE_DEPLOY:-0}" != "1" ]; then
     if grep -q "^CONTRACT_ID_RISK_ATTESTATION=" "${ENV_FILE}" \
         && grep -q "^CONTRACT_ID_ATTESTOR_REGISTRY=" "${ENV_FILE}" \
-        && grep -q "^CONTRACT_ID_MOCK_LENDING_POOL=" "${ENV_FILE}"; then
+        && grep -q "^CONTRACT_ID_MOCK_LENDING_POOL=" "${ENV_FILE}" \
+        && grep -q "^CONTRACT_ID_WALLET_IDENTITY=" "${ENV_FILE}"; then
         log "all contract IDs found in ${ENV_FILE}; skipping deploy."
         log "set ZKREDIT_FORCE_DEPLOY=1 to redeploy."
         exit 0
@@ -122,9 +124,11 @@ log "attestor: ${ATTESTOR_ADDRESS}"
 REGISTRY_ID="$(deploy_contract "${REGISTRY_WASM}" "${ADMIN_ADDRESS}" "AttestorRegistry")"
 RISK_ID="$(deploy_contract "${RISK_WASM}" "${ADMIN_ADDRESS}" "RiskAttestation")"
 LENDING_ID="$(deploy_contract "${LENDING_WASM}" "${ADMIN_ADDRESS}" "MockLendingPool")"
+WALLET_IDENTITY_ID="$(deploy_contract "${WALLET_IDENTITY_WASM}" "${ADMIN_ADDRESS}" "WalletIdentity")"
 
 log "wiring contracts..."
 invoke "${RISK_ID}" "RiskAttestation::set_attestor_registry" set_attestor_registry --contract_id "${REGISTRY_ID}"
+invoke "${RISK_ID}" "RiskAttestation::set_wallet_identity" set_wallet_identity --contract_id "${WALLET_IDENTITY_ID}"
 invoke "${REGISTRY_ID}" "AttestorRegistry::authorize" authorize --attestor "${ATTESTOR_ADDRESS}"
 invoke "${LENDING_ID}" "MockLendingPool::set_risk_attestation" set_risk_attestation --contract_id "${RISK_ID}"
 
@@ -142,6 +146,7 @@ ATTESTOR_SEED=${ATTESTOR_SEED}
 CONTRACT_ID_RISK_ATTESTATION=${RISK_ID}
 CONTRACT_ID_ATTESTOR_REGISTRY=${REGISTRY_ID}
 CONTRACT_ID_MOCK_LENDING_POOL=${LENDING_ID}
+CONTRACT_ID_WALLET_IDENTITY=${WALLET_IDENTITY_ID}
 EOF
 
 FRONTEND_ENV_FILE="${REPO_ROOT}/frontend/.env.local"
@@ -156,6 +161,7 @@ VITE_STELLAR_NETWORK_PASSPHRASE=${NETWORK_PASSPHRASE}
 VITE_CONTRACT_ID_RISK_ATTESTATION=${RISK_ID}
 VITE_CONTRACT_ID_ATTESTOR_REGISTRY=${REGISTRY_ID}
 VITE_CONTRACT_ID_MOCK_LENDING_POOL=${LENDING_ID}
+VITE_CONTRACT_ID_WALLET_IDENTITY=${WALLET_IDENTITY_ID}
 EOF
 
 log "deploy complete."
@@ -163,3 +169,4 @@ log ""
 log "RiskAttestation:      ${RISK_ID}"
 log "AttestorRegistry:     ${REGISTRY_ID}"
 log "MockLendingPool:      ${LENDING_ID}"
+log "WalletIdentity:       ${WALLET_IDENTITY_ID}"

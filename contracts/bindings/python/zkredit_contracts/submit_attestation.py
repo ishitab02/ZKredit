@@ -55,12 +55,22 @@ class AttestationParams:
 
 
 def _build_attestation_scval(params: AttestationParams):
-    """Build a Soroban SCVal map matching `AttestationData`."""
-    from stellar_sdk.contract import xdr as contract_xdr
+    """Build a Soroban SCVal map matching `AttestationData`.
+
+    A `#[contracttype]` struct is encoded as an SCMap whose keys are the field
+    symbols and whose values are the SCVal of each field. `Option<BytesN<32>>`
+    is encoded as the inner value for `Some` and as `Void` for `None` — there is
+    no separate "some" wrapper in Soroban's value model.
+    """
     from stellar_sdk import scval
 
     def hash_val(data: bytes):
-        return scval.to_bytes(scval.to_xdr_bytes(data))
+        return scval.to_bytes(data)
+
+    if params.identity_commitment:
+        identity_commitment = hash_val(params.identity_commitment)
+    else:
+        identity_commitment = scval.to_void()
 
     map_ = {
         scval.to_symbol("wallet"): scval.to_address(params.wallet),
@@ -74,14 +84,8 @@ def _build_attestation_scval(params: AttestationParams):
         scval.to_symbol("issued_at"): scval.to_uint64(params.issued_at),
         scval.to_symbol("expires_at"): scval.to_uint64(params.expires_at),
         scval.to_symbol("kyc_verified"): scval.to_bool(params.kyc_verified),
+        scval.to_symbol("identity_commitment"): identity_commitment,
     }
-
-    if params.identity_commitment:
-        map_[scval.to_symbol("identity_commitment")] = scval.to_some(
-            hash_val(params.identity_commitment)
-        )
-    else:
-        map_[scval.to_symbol("identity_commitment")] = scval.to_void()
 
     return scval.to_map(map_)
 
