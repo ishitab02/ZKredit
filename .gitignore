@@ -1,3 +1,4 @@
+# Agent / editor config
 AGENTS.md
 CLAUDE.md
 .claude
@@ -6,3 +7,22 @@ CLAUDE.md
 .agents
 PLAN.md
 opencode.json
+
+# Environment files (contain secrets — never commit)
+.env
+.env.local
+*.env.local
+
+# Rust / Soroban build artifacts
+/target
+/contracts/target
+
+# Soroban test snapshots (regenerated on every `cargo test`)
+test_snapshots/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local data dumps
+bq_population_180d.csv

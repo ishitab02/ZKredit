@@ -35,5 +35,9 @@ export async function getAttestation(wallet: string): Promise<AttestationData | 
     attestor: String(m.attestor),
     issuedAt: BigInt(String(m.issued_at)),
     expiresAt: BigInt(String(m.expires_at)),
+    kycVerified: Boolean(m.kyc_verified),
+    identityCommitment: m.identity_commitment
+      ? toHex(m.identity_commitment as Uint8Array)
+      : null,
   }
 }

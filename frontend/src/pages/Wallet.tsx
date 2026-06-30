@@ -43,6 +43,13 @@ export function Wallet() {
         <div className="space-y-4">
           <RiskBucketCard attestation={attestation} />
           <AttestationMeta attestation={attestation} />
+          {attestation.identityCommitment && (
+            <p className="rounded-lg bg-blue-50 px-4 py-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+              Linked to identity group{' '}
+              <span className="font-mono">{attestation.identityCommitment.slice(0, 12)}…</span>
+              {' '}— score reflects the group's best attestation.
+            </p>
+          )}
         </div>
       )}
 
@@ -68,6 +75,11 @@ function RiskBucketCard({ attestation }: { attestation: AttestationData }) {
         ) : (
           <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">
             hash-anchored
+          </span>
+        )}
+        {attestation.kycVerified && (
+          <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
+            KYC verified
           </span>
         )}
       </div>

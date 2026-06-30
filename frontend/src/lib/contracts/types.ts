@@ -11,6 +11,10 @@ export interface AttestationData {
   attestor: string
   issuedAt: bigint
   expiresAt: bigint
+  /** Attestor-certified KYC status. Unlocks −100 bps APR discount. */
+  kycVerified: boolean
+  /** Poseidon commitment linking this wallet to an identity group. null = standalone wallet. */
+  identityCommitment: string | null
 }
 
 export interface LoanOffer {

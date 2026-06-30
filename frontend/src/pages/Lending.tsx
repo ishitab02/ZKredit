@@ -73,7 +73,9 @@ export function Lending() {
       <p className="rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
         APR includes a <strong>+2% unverified premium</strong> when{' '}
         <code className="font-mono">zk_verified = false</code> (hash-anchored path). Groth16-proven
-        attestations receive the base rate. No attestation → default 150% collateral, 15% APR.
+        attestations receive the base rate.{' '}
+        <strong>KYC-verified wallets</strong> receive an additional{' '}
+        <strong>−1% discount</strong> on top. No attestation → default 150% collateral, 15% APR.
       </p>
     </div>
   )
@@ -112,6 +114,9 @@ function TermsCard({
           Risk bucket: <span className="font-medium">{bucketLabel}</span>
           {attestation?.zkVerified === false && (
             <span className="ml-2 text-yellow-600 dark:text-yellow-400"> (+2% unverified)</span>
+          )}
+          {attestation?.kycVerified && (
+            <span className="ml-2 text-purple-600 dark:text-purple-400"> (−1% KYC)</span>
           )}
         </p>
       )}

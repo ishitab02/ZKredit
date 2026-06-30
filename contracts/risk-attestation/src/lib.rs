@@ -2,8 +2,13 @@
 
 mod groth16;
 
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contract, contractclient, contractimpl, Address, Bytes, BytesN, Env};
 use zkredit_shared::{AttestationData, DataKey, Error};
+
+#[contractclient(name = "AttestorRegistryClient")]
+pub trait AttestorRegistryInterface {
+    fn is_attestor(env: Env, attestor: Address) -> bool;
+}
 
 #[contract]
 pub struct RiskAttestation;
@@ -12,6 +17,27 @@ pub struct RiskAttestation;
 impl RiskAttestation {
     pub fn __constructor(env: Env, admin: Address) {
         env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    /// Set the AttestorRegistry contract address. Admin-only.
+    pub fn set_attestor_registry(env: Env, contract_id: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::AttestorRegistry, &contract_id);
+        Ok(())
+    }
+
+    fn get_attestor_registry_id(env: &Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::AttestorRegistry)
+            .ok_or(Error::AttestorNotRegistered)
     }
 
     /// Register a Groth16 verification key for a distilled model.
@@ -49,6 +75,14 @@ impl RiskAttestation {
         {
             return Err(Error::AlreadyAttested);
         }
+
+        let registry_id = Self::get_attestor_registry_id(&env)?;
+        let registry = AttestorRegistryClient::new(&env, &registry_id);
+        if !registry.is_attestor(&data.attestor) {
+            return Err(Error::UnauthorizedAttestor);
+        }
+        data.attestor.require_auth();
+
         data.zk_verified = false;
         env.storage()
             .persistent()
@@ -77,6 +111,13 @@ impl RiskAttestation {
         {
             return Err(Error::AlreadyAttested);
         }
+
+        let registry_id = Self::get_attestor_registry_id(&env)?;
+        let registry = AttestorRegistryClient::new(&env, &registry_id);
+        if !registry.is_attestor(&data.attestor) {
+            return Err(Error::UnauthorizedAttestor);
+        }
+        data.attestor.require_auth();
 
         let vk_opt: Option<Bytes> = env
             .storage()
