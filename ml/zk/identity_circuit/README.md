@@ -33,13 +33,13 @@ npm install                    # already done — pulls circomlib
 ```
 
 `build.sh` writes `vk.bin` / `proof.bin` here and copies them to
-`contracts/risk-attestation/src/dg6_vectors/`.
+`contracts/shared/src/dg6_vectors/`.
 
 ## DG6 gate (pass/fail)
 
 ```sh
 cd contracts
-cargo test -p zkredit-risk-attestation --features dg6
+cargo test -p zkredit-shared --features dg6
 ```
 
 - `dg6_poseidon_identity_proof_verifies` — the real snarkjs proof must satisfy

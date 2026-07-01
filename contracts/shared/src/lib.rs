@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod groth16;
+
 use soroban_sdk::{contracterror, contractevent, contracttype, Address, BytesN, Env};
 
 /// Common on-chain attestation record.
@@ -39,6 +41,9 @@ pub enum DataKey {
     IdentityAttestation(BytesN<32>),
     /// Count of wallets enrolled in an identity group (commitment → u32).
     IdentityMemberCount(BytesN<32>),
+    /// Groth16 VK for the Poseidon identity circuit, stored by WalletIdentity.
+    /// When set, `register_wallet` requires a valid proof of secret knowledge.
+    IdentityVerificationKey,
     /// WalletIdentity contract address, stored by RiskAttestation for cross-contract resolution.
     WalletIdentityContract,
     /// Address of the AttestorRegistry contract used to validate attestor addresses.

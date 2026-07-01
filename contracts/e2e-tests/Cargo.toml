@@ -11,6 +11,11 @@ publish = false
 [lib]
 doctest = false
 
+[features]
+# Enables the proof-gated register_wallet test using the real DG6 vectors
+# (contracts/shared/src/dg6_vectors). Off by default.
+dg6 = []
+
 # Integration-test-only crate: exercises the four contracts together in one
 # Soroban test env (multi-wallet group resolution, KYC, lending). No wasm target.
 [dev-dependencies]

@@ -37,6 +37,18 @@ const PROOF_N_PUB: u32 = 256;
 const PROOF_INPUTS: u32 = 258;
 const PROOF_MIN_SIZE: u32 = PROOF_INPUTS;
 
+/// Extract the `i`-th public input (a 32-byte big-endian scalar) from a proof
+/// blob. Callers use this to bind a proof to an expected value — e.g. asserting
+/// the proven Poseidon commitment equals the commitment being registered.
+/// Panics if the blob has fewer than `i + 1` public inputs.
+pub fn nth_public_input(env: &Env, proof_bytes: &Bytes, i: u32) -> BytesN<32> {
+    let n_pub = read_u16_be(proof_bytes, PROOF_N_PUB) as u32;
+    assert!(i < n_pub, "groth16: public input index out of range");
+    let offset = PROOF_INPUTS + 32 * i;
+    BytesN::try_from_val(env, proof_bytes.slice(offset..offset + 32).as_val())
+        .expect("groth16: invalid public input bytes")
+}
+
 /// Verify a Groth16 proof.  Returns `true` if valid, `false` if the proof
 /// does not satisfy the verification equation.  Panics on malformed blobs.
 pub fn verify_groth16(env: &Env, vk_bytes: &Bytes, proof_bytes: &Bytes) -> bool {

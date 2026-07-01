@@ -1,9 +1,7 @@
 #![no_std]
 
-mod groth16;
-
 use soroban_sdk::{contract, contractclient, contractimpl, Address, Bytes, BytesN, Env};
-use zkredit_shared::{AttestationData, DataKey, Error};
+use zkredit_shared::{groth16, AttestationData, DataKey, Error};
 
 #[contractclient(name = "AttestorRegistryClient")]
 pub trait AttestorRegistryInterface {

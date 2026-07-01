@@ -44,9 +44,9 @@ $SNARKJS groth16 verify vkey.json public.json proof.json
 echo "==> convert to Soroban blobs"
 node convert.js
 
-echo "==> copy test vectors into risk-attestation crate"
-DEST="../../../contracts/risk-attestation/src/dg6_vectors"
+echo "==> copy test vectors into shared crate"
+DEST="../../../contracts/shared/src/dg6_vectors"
 mkdir -p "$DEST"
 cp vk.bin proof.bin "$DEST/"
 echo "done. vk.bin/proof.bin written and copied to $DEST"
-echo "run DG6 gate: (cd ../../../contracts && cargo test -p zkredit-risk-attestation --features dg6)"
+echo "run DG6 gate: (cd ../../../contracts && cargo test -p zkredit-shared --features dg6)"

@@ -6,7 +6,7 @@
 //! prices off that shared score.
 
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, BytesN, Env};
+use soroban_sdk::{Address, Bytes, BytesN, Env};
 use zkredit_shared::AttestationData;
 
 use zkredit_attestor_registry::{AttestorRegistry, AttestorRegistryClient};
@@ -128,9 +128,11 @@ fn linked_wallets_share_group_best_score() {
     // Before any group score is published, A resolves to its own bucket (HIGH=3).
     assert_eq!(h.risk.get_attestation(&wallet_a).unwrap().risk_bucket, 3);
 
-    // Both wallets join the identity group.
-    h.wid.register_wallet(&wallet_a, &c);
-    h.wid.register_wallet(&wallet_b, &c);
+    // Both wallets join the identity group. No identity VK is set here, so
+    // registration is optimistic (proof-gating is covered by proof_gated_* below).
+    let np = Bytes::new(env);
+    h.wid.register_wallet(&wallet_a, &c, &np);
+    h.wid.register_wallet(&wallet_b, &c, &np);
 
     // The attestor publishes the group's best attestation: VERY_LOW, ZK + KYC.
     let group_best = attestation(env, &wallet_a, &h.attestor, 0, true, true, Some(c.clone()));
@@ -187,7 +189,7 @@ fn leaving_group_restores_own_score() {
         &wallet,
         &attestation(env, &wallet, &h.attestor, 4, false, false, Some(c.clone())),
     );
-    h.wid.register_wallet(&wallet, &c);
+    h.wid.register_wallet(&wallet, &c, &Bytes::new(env));
     h.wid.update_group_score(
         &c,
         &attestation(env, &wallet, &h.attestor, 1, true, false, Some(c.clone())),
