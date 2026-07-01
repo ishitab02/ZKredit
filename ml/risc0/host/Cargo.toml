@@ -1,0 +1,12 @@
+[package]
+name = "zkredit-risc0-host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+risc0-zkvm = "3.0"
+zkredit-risc0-methods = { path = "../methods" }
+ark-bn254 = "0.5"
+ark-ff = "0.5"
+hex = "0.4"

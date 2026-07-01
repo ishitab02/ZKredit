@@ -74,6 +74,14 @@ The feature vector is a private guest input; only outputs + binding fields are p
   verify on Soroban. Record proving time/memory + compression infra (Bonsai vs local GPU).
 - **Gate A:** a real RISC Zero receipt verifies on Soroban testnet.
 
+**A1 status (2026-07-02):** claim-digest port verified against `risc0-zkvm` ground truth;
+`split_digest`/pairing engine tested; RISC Zero 3.0.5 VK extracted + wired
+(`risc0_vectors/vk.bin`); guest+host built. **Blocked on the final live-fire test:** the
+Groth16 STARK→SNARK prover OOMs on this 15 GB box (needs a ≥32 GB machine or Bonsai). To
+close: run `ml/risc0/host` there, commit `seal.bin`/`journal.bin`, add the positive
+`verify_receipt` end-to-end test. (Docker Desktop bind mounts also require
+`RISC0_WORK_DIR` under `$HOME`.)
+
 **Phase B — distilled model in the guest:**
 - B1: distilled model as a **SmartCore** model runnable in a `no_std` guest; measure cycles.
 - B2: guest commits `{risk_bucket, confidence, identity_commitment/wallet,
