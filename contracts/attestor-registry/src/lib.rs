@@ -19,7 +19,9 @@ impl AttestorRegistry {
             .get(&DataKey::Admin)
             .expect("admin not set");
         admin.require_auth();
-        env.storage().persistent().set(&DataKey::Attestor(attestor), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Attestor(attestor), &true);
     }
 
     pub fn revoke(env: Env, attestor: Address) {
@@ -29,7 +31,9 @@ impl AttestorRegistry {
             .get(&DataKey::Admin)
             .expect("admin not set");
         admin.require_auth();
-        env.storage().persistent().set(&DataKey::Attestor(attestor), &false);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Attestor(attestor), &false);
     }
 
     pub fn is_attestor(env: Env, attestor: Address) -> bool {

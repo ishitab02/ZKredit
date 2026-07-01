@@ -1,19 +1,172 @@
 #!/usr/bin/env sh
-# deploy-testnet.sh — idempotent testnet deploy skeleton.
+# deploy-testnet.sh — idempotent testnet deploy for ZKredit core contracts.
 # Owner: Soham. Day 4 implementation per CLAUDE.md.
+#
+# Deploys RiskAttestation, AttestorRegistry, and MockLendingPool, wires them
+# together, registers the canonical attestor, and writes .env.local.
+#
+# Idempotency: if .env.local already contains all three contract IDs and
+# ZKREDIT_FORCE_DEPLOY is not set to 1, the script exits early.
 
-set -e
+set -eu
 
-echo "============================================"
-echo "ZKredit testnet deploy"
-echo "============================================"
-echo "This script is idempotent and will:"
-echo "  1. Check for ADMIN_SEED / ATTESTOR_SEED in .env."
-echo "  2. Build and optimize /contracts/*/*.wasm."
-echo "  3. Deploy RiskAttestation, AttestorRegistry, and MockLendingPool."
-echo "  4. Wire admin, register the canonical attestor."
-echo "  5. Write/append contract IDs to .env.local."
-echo ""
-echo "Day 4 implementation. Exiting."
+REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+cd "${REPO_ROOT}"
 
-exit 1
+ENV_FILE="${REPO_ROOT}/.env.local"
+NETWORK_RPC="https://soroban-testnet.stellar.org"
+NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+
+ADMIN_ALIAS="zkredit_admin"
+ATTESTOR_ALIAS="zkredit_attestor"
+
+WASM_DIR="${REPO_ROOT}/contracts/target/wasm32v1-none/release"
+REGISTRY_WASM="${WASM_DIR}/zkredit_attestor_registry.wasm"
+RISK_WASM="${WASM_DIR}/zkredit_risk_attestation.wasm"
+LENDING_WASM="${WASM_DIR}/zkredit_mock_lending_pool.wasm"
+WALLET_IDENTITY_WASM="${WASM_DIR}/zkredit_wallet_identity.wasm"
+
+log() {
+    echo "[deploy-testnet] $*" >&2
+}
+
+ensure_soroban() {
+    if ! command -v soroban >/dev/null 2>&1; then
+        log "soroban CLI not found; run 'make bootstrap' first."
+        exit 1
+    fi
+}
+
+ensure_network() {
+    soroban network add testnet \
+        --rpc-url "${NETWORK_RPC}" \
+        --network-passphrase "${NETWORK_PASSPHRASE}" >/dev/null 2>&1 || true
+}
+
+ensure_identity() {
+    _alias="$1"
+    if soroban --quiet keys public-key "${_alias}" >/dev/null 2>&1; then
+        log "using existing identity '${_alias}'"
+        return
+    fi
+    log "creating and funding identity '${_alias}'"
+    soroban keys generate "${_alias}" --fund --as-secret
+}
+
+identity_address() {
+    soroban --quiet keys public-key "$1"
+}
+
+identity_secret() {
+    soroban --quiet keys secret "$1"
+}
+
+deploy_contract() {
+    _wasm="$1"
+    _admin="$2"
+    _name="$3"
+    log "deploying ${_name}..."
+    _id="$(soroban --quiet contract deploy \
+        --wasm "${_wasm}" \
+        --source "${ADMIN_ALIAS}" \
+        --network testnet \
+        -- \
+        --admin "${_admin}")"
+    log "  -> ${_id}"
+    printf '%s\n' "${_id}"
+}
+
+invoke() {
+    _id="$1"
+    _name="$2"
+    shift 2
+    log "  ${_name}"
+    soroban --quiet contract invoke \
+        --id "${_id}" \
+        --source "${ADMIN_ALIAS}" \
+        --network testnet \
+        -- \
+        "$@"
+}
+
+if [ -f "${ENV_FILE}" ] && [ "${ZKREDIT_FORCE_DEPLOY:-0}" != "1" ]; then
+    if grep -q "^CONTRACT_ID_RISK_ATTESTATION=" "${ENV_FILE}" \
+        && grep -q "^CONTRACT_ID_ATTESTOR_REGISTRY=" "${ENV_FILE}" \
+        && grep -q "^CONTRACT_ID_MOCK_LENDING_POOL=" "${ENV_FILE}" \
+        && grep -q "^CONTRACT_ID_WALLET_IDENTITY=" "${ENV_FILE}"; then
+        log "all contract IDs found in ${ENV_FILE}; skipping deploy."
+        log "set ZKREDIT_FORCE_DEPLOY=1 to redeploy."
+        exit 0
+    fi
+fi
+
+log "================================================"
+log "ZKredit testnet deploy"
+log "================================================"
+
+ensure_soroban
+ensure_network
+
+log "building contracts..."
+make build-contracts
+
+ensure_identity "${ADMIN_ALIAS}"
+ensure_identity "${ATTESTOR_ALIAS}"
+
+ADMIN_ADDRESS="$(identity_address "${ADMIN_ALIAS}")"
+ADMIN_SEED="$(identity_secret "${ADMIN_ALIAS}")"
+ATTESTOR_ADDRESS="$(identity_address "${ATTESTOR_ALIAS}")"
+ATTESTOR_SEED="$(identity_secret "${ATTESTOR_ALIAS}")"
+
+log "admin: ${ADMIN_ADDRESS}"
+log "attestor: ${ATTESTOR_ADDRESS}"
+
+REGISTRY_ID="$(deploy_contract "${REGISTRY_WASM}" "${ADMIN_ADDRESS}" "AttestorRegistry")"
+RISK_ID="$(deploy_contract "${RISK_WASM}" "${ADMIN_ADDRESS}" "RiskAttestation")"
+LENDING_ID="$(deploy_contract "${LENDING_WASM}" "${ADMIN_ADDRESS}" "MockLendingPool")"
+WALLET_IDENTITY_ID="$(deploy_contract "${WALLET_IDENTITY_WASM}" "${ADMIN_ADDRESS}" "WalletIdentity")"
+
+log "wiring contracts..."
+invoke "${RISK_ID}" "RiskAttestation::set_attestor_registry" set_attestor_registry --contract_id "${REGISTRY_ID}"
+invoke "${RISK_ID}" "RiskAttestation::set_wallet_identity" set_wallet_identity --contract_id "${WALLET_IDENTITY_ID}"
+invoke "${REGISTRY_ID}" "AttestorRegistry::authorize" authorize --attestor "${ATTESTOR_ADDRESS}"
+invoke "${LENDING_ID}" "MockLendingPool::set_risk_attestation" set_risk_attestation --contract_id "${RISK_ID}"
+
+log "writing ${ENV_FILE}..."
+cat > "${ENV_FILE}" <<EOF
+# Generated by infra/scripts/deploy-testnet.sh
+# Do not commit this file. It contains secrets and deployed contract IDs.
+STELLAR_NETWORK=testnet
+
+ADMIN_ADDRESS=${ADMIN_ADDRESS}
+ADMIN_SEED=${ADMIN_SEED}
+ATTESTOR_ADDRESS=${ATTESTOR_ADDRESS}
+ATTESTOR_SEED=${ATTESTOR_SEED}
+
+CONTRACT_ID_RISK_ATTESTATION=${RISK_ID}
+CONTRACT_ID_ATTESTOR_REGISTRY=${REGISTRY_ID}
+CONTRACT_ID_MOCK_LENDING_POOL=${LENDING_ID}
+CONTRACT_ID_WALLET_IDENTITY=${WALLET_IDENTITY_ID}
+EOF
+
+FRONTEND_ENV_FILE="${REPO_ROOT}/frontend/.env.local"
+log "writing ${FRONTEND_ENV_FILE}..."
+cat > "${FRONTEND_ENV_FILE}" <<EOF
+# Generated by infra/scripts/deploy-testnet.sh — do not commit.
+# Public network params + deployed contract IDs only (no secrets).
+VITE_STELLAR_NETWORK=testnet
+VITE_STELLAR_RPC_URL=${NETWORK_RPC}
+VITE_STELLAR_NETWORK_PASSPHRASE=${NETWORK_PASSPHRASE}
+
+VITE_CONTRACT_ID_RISK_ATTESTATION=${RISK_ID}
+VITE_CONTRACT_ID_ATTESTOR_REGISTRY=${REGISTRY_ID}
+VITE_CONTRACT_ID_MOCK_LENDING_POOL=${LENDING_ID}
+VITE_CONTRACT_ID_WALLET_IDENTITY=${WALLET_IDENTITY_ID}
+EOF
+
+log "deploy complete."
+log ""
+log "RiskAttestation:      ${RISK_ID}"
+log "AttestorRegistry:     ${REGISTRY_ID}"
+log "MockLendingPool:      ${LENDING_ID}"
+log "WalletIdentity:       ${WALLET_IDENTITY_ID}"

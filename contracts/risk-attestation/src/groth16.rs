@@ -1,3 +1,4 @@
+use soroban_sdk::crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr};
 /// Groth16 proof verifier over BN254 using Soroban host functions.
 ///
 /// VK blob layout (bytes):
@@ -20,7 +21,6 @@
 /// Multi-pairing form (all pairs product = GT identity):
 ///   e(-A, B) · e(α, β) · e(vk_x, γ) · e(C, δ) = 1
 use soroban_sdk::{vec, Bytes, BytesN, Env, TryFromVal, Vec};
-use soroban_sdk::crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr};
 
 const VK_ALPHA: u32 = 0;
 const VK_BETA: u32 = 64;
@@ -46,11 +46,11 @@ pub fn verify_groth16(env: &Env, vk_bytes: &Bytes, proof_bytes: &Bytes) -> bool 
     assert!(proof_bytes.len() >= PROOF_MIN_SIZE, "proof: too short");
 
     let alpha_g1 = g1_at(env, vk_bytes, VK_ALPHA);
-    let beta_g2  = g2_at(env, vk_bytes, VK_BETA);
+    let beta_g2 = g2_at(env, vk_bytes, VK_BETA);
     let gamma_g2 = g2_at(env, vk_bytes, VK_GAMMA);
     let delta_g2 = g2_at(env, vk_bytes, VK_DELTA);
 
-    let n_ic  = read_u32_be(vk_bytes, VK_N_IC) as usize;
+    let n_ic = read_u32_be(vk_bytes, VK_N_IC) as usize;
     let n_pub = read_u16_be(proof_bytes, PROOF_N_PUB) as usize;
     assert!(n_ic == n_pub + 1, "vk/proof: public input count mismatch");
     assert!(
@@ -69,9 +69,9 @@ pub fn verify_groth16(env: &Env, vk_bytes: &Bytes, proof_bytes: &Bytes) -> bool 
     // vk_x = IC[0] + Σ pub[i] * IC[i+1]
     let mut vk_x = g1_at(env, vk_bytes, VK_IC0);
     for i in 0..n_pub {
-        let ic_i  = g1_at(env, vk_bytes, VK_IC0 + 64 * (i as u32 + 1));
+        let ic_i = g1_at(env, vk_bytes, VK_IC0 + 64 * (i as u32 + 1));
         let pub_i = fr_at(env, proof_bytes, PROOF_INPUTS + 32 * i as u32);
-        let term  = bn254.g1_mul(&ic_i, &pub_i);
+        let term = bn254.g1_mul(&ic_i, &pub_i);
         vk_x = bn254.g1_add(&vk_x, &term);
     }
 
@@ -83,23 +83,20 @@ pub fn verify_groth16(env: &Env, vk_bytes: &Bytes, proof_bytes: &Bytes) -> bool 
 }
 
 fn g1_at(env: &Env, src: &Bytes, offset: u32) -> Bn254G1Affine {
-    let b: BytesN<64> =
-        BytesN::try_from_val(env, src.slice(offset..offset + 64).as_val())
-            .expect("groth16: invalid G1 bytes");
+    let b: BytesN<64> = BytesN::try_from_val(env, src.slice(offset..offset + 64).as_val())
+        .expect("groth16: invalid G1 bytes");
     Bn254G1Affine::from_bytes(b)
 }
 
 fn g2_at(env: &Env, src: &Bytes, offset: u32) -> Bn254G2Affine {
-    let b: BytesN<128> =
-        BytesN::try_from_val(env, src.slice(offset..offset + 128).as_val())
-            .expect("groth16: invalid G2 bytes");
+    let b: BytesN<128> = BytesN::try_from_val(env, src.slice(offset..offset + 128).as_val())
+        .expect("groth16: invalid G2 bytes");
     Bn254G2Affine::from_bytes(b)
 }
 
 fn fr_at(env: &Env, src: &Bytes, offset: u32) -> Fr {
-    let b: BytesN<32> =
-        BytesN::try_from_val(env, src.slice(offset..offset + 32).as_val())
-            .expect("groth16: invalid Fr bytes");
+    let b: BytesN<32> = BytesN::try_from_val(env, src.slice(offset..offset + 32).as_val())
+        .expect("groth16: invalid Fr bytes");
     Fr::from_bytes(b)
 }
 
@@ -111,8 +108,7 @@ fn read_u32_be(bytes: &Bytes, offset: u32) -> u32 {
 }
 
 fn read_u16_be(bytes: &Bytes, offset: u32) -> u16 {
-    ((bytes.get(offset).expect("byte") as u16) << 8)
-        | (bytes.get(offset + 1).expect("byte") as u16)
+    ((bytes.get(offset).expect("byte") as u16) << 8) | (bytes.get(offset + 1).expect("byte") as u16)
 }
 
 /// DG1 validation tests — exercise `env.crypto().bn254().pairing_check` with
@@ -161,9 +157,9 @@ mod tests {
         let env = Env::default();
         let bn254 = env.crypto().bn254();
 
-        let g1     = g1_generator(&env);
+        let g1 = g1_generator(&env);
         let neg_g1 = -g1.clone();
-        let g2     = g2_generator(&env);
+        let g2 = g2_generator(&env);
 
         let g1_vec: Vec<Bn254G1Affine> = vec![&env, g1, neg_g1];
         let g2_vec: Vec<Bn254G2Affine> = vec![&env, g2.clone(), g2];

@@ -1,4 +1,4 @@
-.PHONY: bootstrap build-contracts test-contracts deploy-testnet frontend-types e2e demo-data docker-up
+.PHONY: bootstrap build-contracts test-contracts deploy-testnet bindings migrate-attestor frontend-types e2e demo-data docker-up
 
 MAKEFLAGS += --no-print-directory
 
@@ -26,6 +26,32 @@ test-contracts:
 
 deploy-testnet:
 	infra/scripts/deploy-testnet.sh
+
+bindings:
+	rm -rf contracts/bindings/ts/risk-attestation
+	rm -rf contracts/bindings/ts/attestor-registry
+	rm -rf contracts/bindings/ts/mock-lending-pool
+	rm -rf contracts/bindings/ts/wallet-identity
+	mkdir -p contracts/bindings/ts
+	soroban contract bindings typescript \
+		--wasm contracts/target/wasm32v1-none/release/zkredit_risk_attestation.wasm \
+		--output-dir contracts/bindings/ts/risk-attestation \
+		--overwrite
+	soroban contract bindings typescript \
+		--wasm contracts/target/wasm32v1-none/release/zkredit_attestor_registry.wasm \
+		--output-dir contracts/bindings/ts/attestor-registry \
+		--overwrite
+	soroban contract bindings typescript \
+		--wasm contracts/target/wasm32v1-none/release/zkredit_mock_lending_pool.wasm \
+		--output-dir contracts/bindings/ts/mock-lending-pool \
+		--overwrite
+	soroban contract bindings typescript \
+		--wasm contracts/target/wasm32v1-none/release/zkredit_wallet_identity.wasm \
+		--output-dir contracts/bindings/ts/wallet-identity \
+		--overwrite
+
+migrate-attestor:
+	@echo "migrate-attestor: not yet implemented"
 
 frontend-types:
 	@echo "frontend-types: generate from OpenAPI when ready"

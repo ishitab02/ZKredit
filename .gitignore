@@ -1,3 +1,4 @@
+# Agent / editor config
 AGENTS.md
 CLAUDE.md
 .claude
@@ -9,6 +10,7 @@ opencode.json
 
 # --- Python ---
 __pycache__/
+*.pyc
 *.py[cod]
 .venv/
 venv/
@@ -24,11 +26,20 @@ model_store/
 *.joblib
 *.srs
 
+# --- Rust / Soroban build artifacts ---
+/target
+/contracts/target
+
+# Soroban test snapshots (regenerated on every `cargo test`)
+test_snapshots/
+
 # --- Secrets / local config ---
 .env
 .env.local
+*.env.local
 *.key
 *-service-account.json
 
 # Local ingest seed data (not committed)
 /data/
+bq_population_180d.csv
