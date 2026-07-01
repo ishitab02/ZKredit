@@ -8,21 +8,38 @@ CLAUDE.md
 PLAN.md
 opencode.json
 
-# Environment files (contain secrets — never commit)
-.env
-.env.local
-*.env.local
+# --- Python ---
+__pycache__/
+*.pyc
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
 
-# Rust / Soroban build artifacts
+# --- Trained model + ZK circuit artifacts ---
+model_store/
+*.joblib
+*.srs
+
+# --- Rust / Soroban build artifacts ---
 /target
 /contracts/target
 
 # Soroban test snapshots (regenerated on every `cargo test`)
 test_snapshots/
 
-# Python
-__pycache__/
-*.pyc
+# --- Secrets / local config ---
+.env
+.env.local
+*.env.local
+*.key
+*-service-account.json
 
-# Local data dumps
+# Local ingest seed data (not committed)
+/data/
 bq_population_180d.csv
