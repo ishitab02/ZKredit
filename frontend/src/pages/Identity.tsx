@@ -1,42 +1,51 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   getGroupAttestation,
   registerWallet,
   leaveGroup,
 } from '../lib/contracts/wallet-identity'
+import { proveIdentity } from '../lib/zk/identity-proof'
+import type { IdentityProof } from '../lib/zk/identity-proof'
 import { connectFreighter } from '../lib/freighter'
-import { toHex } from '../lib/contracts/bytes'
 import { KycBadge, RiskBadge } from '../components/Badges'
 import type { AttestationData } from '../lib/contracts/types'
 
 /**
  * ZKredit Identity — link multiple wallets to one private identity so they share
- * a single trust score. The identity secret is generated client-side; its
- * commitment is what links wallets on-chain. (The commitment is a SHA-256
- * stand-in until the Poseidon proof circuit lands — DG6, Day 8 — at which point
- * linking will additionally prove knowledge of the secret in zero knowledge.)
+ * a single trust score. The identity secret is generated client-side; a Groth16
+ * proof of knowledge of that secret (Poseidon preimage) is produced in-browser
+ * and verified on-chain by WalletIdentity before a wallet is linked. The secret
+ * itself never leaves the device.
  */
 export function Identity() {
-  const [secret, setSecret] = useState<string | null>(null)
-  const [commitment, setCommitment] = useState('')
+  const [identity, setIdentity] = useState<IdentityProof | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState<string | null>(null)
   const [address, setAddress] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
 
-  const generateSecret = async () => {
-    const bytes = crypto.getRandomValues(new Uint8Array(32))
-    setSecret(toHex(bytes))
-    const digest = await crypto.subtle.digest('SHA-256', bytes)
-    setCommitment(toHex(new Uint8Array(digest)))
+  const generate = async () => {
+    setGenerating(true)
+    setGenError(null)
+    try {
+      // Fresh identity: prove knowledge of a new random secret. This also yields
+      // the Poseidon commitment (the circuit's public output).
+      setIdentity(await proveIdentity())
+    } catch (e) {
+      setGenError(String(e instanceof Error ? e.message : e))
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const downloadBackup = () => {
-    if (!secret) return
+    if (!identity) return
     const blob = new Blob(
       [
         'ZKredit identity secret — keep this safe and private.\n',
         'Anyone with this value controls your identity group.\n\n',
-        `secret: ${secret}\n`,
-        `commitment (SHA-256 stand-in): ${commitment}\n`,
+        `secret (decimal): ${identity.secretDec}\n`,
+        `commitment: ${identity.commitmentHex}\n`,
       ],
       { type: 'text/plain' },
     )
@@ -70,17 +79,18 @@ export function Identity() {
 
       <Step n={1} title="Create your ZKredit identity">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Your identity is a 32-byte secret generated in your browser. It never leaves this
-          device. Its commitment hash is what links wallets together.
+          Generates a secret in your browser and a zero-knowledge proof that you know it. The
+          proof (not the secret) is what the contract checks when you link a wallet.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
-            onClick={generateSecret}
-            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+            onClick={generate}
+            disabled={generating}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
           >
-            {secret ? 'Regenerate secret' : 'Generate identity secret'}
+            {generating ? 'Generating proof…' : identity ? 'Regenerate identity' : 'Generate identity'}
           </button>
-          {secret && (
+          {identity && (
             <button
               onClick={downloadBackup}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
@@ -89,10 +99,12 @@ export function Identity() {
             </button>
           )}
         </div>
-        {secret && (
+        {genError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{genError}</p>}
+        {identity && (
           <dl className="mt-4 space-y-2 text-xs">
-            <Field label="Secret (back this up!)" value={secret} mono />
-            <Field label="Commitment" value={commitment} mono />
+            <Field label="Secret (back this up!)" value={identity.secretDec} mono />
+            <Field label="Commitment" value={identity.commitmentHex} mono />
+            <Field label="Proof" value={`${identity.proofBytes.length} bytes (Groth16, ready)`} />
           </dl>
         )}
       </Step>
@@ -100,15 +112,14 @@ export function Identity() {
       <Step n={2} title="Link this wallet">
         <LinkWallet
           address={address}
-          commitment={commitment}
+          identity={identity}
           onConnect={connect}
           connectError={connectError}
-          onCommitmentChange={setCommitment}
         />
       </Step>
 
       <Step n={3} title="Your identity score">
-        <GroupScoreLookup commitment={commitment} onCommitmentChange={setCommitment} />
+        <GroupScoreLookup initialCommitment={identity?.commitmentHex ?? ''} />
       </Step>
 
       <Step n={4} title="KYC verification">
@@ -125,30 +136,28 @@ export function Identity() {
 
 function LinkWallet({
   address,
-  commitment,
+  identity,
   onConnect,
   connectError,
-  onCommitmentChange,
 }: {
   address: string | null
-  commitment: string
+  identity: IdentityProof | null
   onConnect: () => void
   connectError: string | null
-  onCommitmentChange: (v: string) => void
 }) {
   const [busy, setBusy] = useState<'link' | 'leave' | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const commitmentValid = /^[0-9a-fA-F]{64}$/.test(commitment.trim())
-
   const link = async () => {
-    if (!address || !commitmentValid) return
+    if (!address || !identity) return
     setBusy('link')
     setError(null)
     setTxHash(null)
     try {
-      setTxHash(await registerWallet(address, commitment.trim()))
+      setTxHash(
+        await registerWallet(address, identity.commitmentHex, identity.proofBytes),
+      )
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e))
     } finally {
@@ -174,7 +183,8 @@ function LinkWallet({
     <div>
       <p className="text-sm text-gray-600 dark:text-gray-400">
         Connect a wallet and register it under your identity commitment. Freighter signs the
-        transaction; the wallet must be the transaction source.
+        transaction; the contract verifies your proof on-chain before linking. Link more wallets
+        by reconnecting a different account — the same proof covers the whole group.
       </p>
 
       {!address ? (
@@ -192,17 +202,13 @@ function LinkWallet({
       ) : (
         <div className="mt-4 space-y-3">
           <Field label="Connected wallet" value={address} mono />
-          <input
-            type="text"
-            placeholder="commitment hash (64 hex chars)"
-            value={commitment}
-            onChange={e => onCommitmentChange(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-          />
+          {!identity && (
+            <p className="text-xs text-gray-500">Generate an identity above to enable linking.</p>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={link}
-              disabled={busy !== null || !commitmentValid}
+              disabled={busy !== null || !identity}
               className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
             >
               {busy === 'link' ? 'Linking…' : 'Link wallet'}
@@ -215,11 +221,6 @@ function LinkWallet({
               {busy === 'leave' ? 'Leaving…' : 'Leave group'}
             </button>
           </div>
-          {!commitmentValid && (
-            <p className="text-xs text-gray-500">
-              Generate a secret above (or paste a 64-hex-char commitment) to enable linking.
-            </p>
-          )}
         </div>
       )}
 
@@ -237,16 +238,16 @@ function LinkWallet({
   )
 }
 
-function GroupScoreLookup({
-  commitment,
-  onCommitmentChange,
-}: {
-  commitment: string
-  onCommitmentChange: (v: string) => void
-}) {
+function GroupScoreLookup({ initialCommitment }: { initialCommitment: string }) {
+  const [commitment, setCommitment] = useState(initialCommitment)
   const [loading, setLoading] = useState(false)
   const [attestation, setAttestation] = useState<AttestationData | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+
+  // Prefill the field when a fresh identity is generated upstream.
+  useEffect(() => {
+    if (initialCommitment) setCommitment(initialCommitment)
+  }, [initialCommitment])
 
   const lookup = async () => {
     setLoading(true)
@@ -270,7 +271,7 @@ function GroupScoreLookup({
           type="text"
           placeholder="commitment hash (64 hex chars)"
           value={commitment}
-          onChange={e => onCommitmentChange(e.target.value)}
+          onChange={e => setCommitment(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && lookup()}
           className="flex-1 rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
         />

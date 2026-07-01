@@ -32,14 +32,16 @@ signal with nothing sensitive exposed.
 
 Open the **Identity** page (`/identity`).
 
-1. **Create identity** — click *Generate identity secret*. A 32-byte secret is
-   created in-browser (never leaves the device); its commitment hash is shown.
-   *(The commitment is a SHA-256 stand-in today; the Poseidon circuit under
-   `ml/zk/identity_circuit` replaces it once DG6 lands — see below.)*
+1. **Create identity** — click *Generate identity*. In the browser this mints a
+   secret, computes its Poseidon commitment, and generates a Groth16 proof that
+   you know the secret (snarkjs + the circuit assets under `/zk/`). The secret
+   never leaves the device; only the proof and commitment do.
 2. **Link wallet A** — *Connect Freighter*, then *Link wallet*. This signs
-   `WalletIdentity::register_wallet(wallet, commitment)`; show the tx hash.
-3. **Link wallet B** — switch the Freighter account, reconnect, link again with
-   the same commitment.
+   `WalletIdentity::register_wallet(wallet, commitment, proof)`; the contract
+   **verifies the Groth16 proof on-chain** (and binds it to the commitment)
+   before linking. Show the tx hash.
+3. **Link wallet B** — switch the Freighter account, reconnect, link again — the
+   same proof covers the whole identity group.
 4. **The payoff** — look up the commitment under *Your identity score*. Both
    wallets now resolve to the **group's best** attestation. Querying wallet B
    returns the group score; wallet A's address never appears on-chain.
@@ -66,22 +68,28 @@ hash-anchored → `−100 bps` if KYC verified.
 
 ```sh
 set -a && . ./.env.local && set +a
+# Read paths work without a proof:
 soroban contract invoke --id "$CONTRACT_ID_MOCK_LENDING_POOL" --source zkredit_admin \
   --network testnet -- get_loan_terms --wallet "$ATTESTOR_ADDRESS"
 soroban contract invoke --id "$CONTRACT_ID_WALLET_IDENTITY" --source zkredit_attestor \
-  --network testnet -- register_wallet --wallet "$ATTESTOR_ADDRESS" \
-  --commitment 0707070707070707070707070707070707070707070707070707070707070707
+  --network testnet -- get_group_attestation \
+  --commitment 26ef6dd4cf0be9cb745e6a20d05e54766bcf592a4c963e76337cc9c0250c2855
 ```
+
+`register_wallet` is proof-gated once the identity VK is set (deploy does this),
+so it is driven from the Identity page — the browser generates the proof. To
+exercise it from the CLI you must pass a matching `--proof_bytes` hex blob
+(e.g. `ml/zk/identity_circuit/proof.bin` for its commitment).
 
 ## 5. The ZK story (30s)
 
-- DG1 (done): `RiskAttestation` verifies Groth16 BN254 proofs on-chain via
-  Soroban host functions (`contracts/risk-attestation/src/groth16.rs`).
-- DG6 (pending toolchain): the Poseidon identity circuit
-  (`ml/zk/identity_circuit`) proves knowledge of the secret behind a commitment;
-  `./build.sh` generates a proof and `cargo test --features dg6` verifies it
-  through the same on-chain verifier. Installing circom is the one remaining
-  step (see the circuit README).
+- DG1 (done): Soroban verifies Groth16 BN254 proofs on-chain via host functions
+  (`contracts/shared/src/groth16.rs`).
+- DG6 (**done**): the Poseidon identity circuit (`ml/zk/identity_circuit`) proves
+  knowledge of the secret behind a commitment. A real circom/snarkjs proof
+  verifies through the on-chain verifier — `cargo test -p zkredit-shared
+  --features dg6`. That same verification now gates `register_wallet`, and the
+  frontend generates the proof in-browser (step 2 above).
 
 ---
 
