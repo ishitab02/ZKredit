@@ -1,0 +1,14 @@
+[package]
+name = "zkredit-risc0-params-dump"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone tool: prints the RISC Zero 3.0.5 Groth16 verifier constants
+# (control root, bn254 control id, verifying key) and a sample ReceiptClaim
+# digest, to pin into contracts/shared/src/risc0.rs and to test-drive the
+# Soroban claim-digest port. No guest / no proving — builds and runs fast.
+
+[dependencies]
+risc0-zkvm = "3.0.5"
+hex = "0.4"
