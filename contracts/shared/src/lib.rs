@@ -1,6 +1,8 @@
 #![no_std]
 
 pub mod groth16;
+#[cfg(feature = "risc0")]
+pub mod risc0;
 
 use soroban_sdk::{contracterror, contractevent, contracttype, Address, BytesN, Env};
 
