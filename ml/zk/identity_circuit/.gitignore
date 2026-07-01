@@ -7,8 +7,12 @@ node_modules/
 *.wasm
 identity_js/
 witness.wtns
-# snarkjs JSON intermediates (vk.bin / proof.bin are committed as test vectors)
+# snarkjs JSON intermediates
 vkey.json
 proof.json
 public.json
 input.json
+# Working copies of the blobs; the committed test vectors live in
+# contracts/risk-attestation/src/dg6_vectors/ (copied there by build.sh).
+vk.bin
+proof.bin
