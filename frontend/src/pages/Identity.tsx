@@ -6,7 +6,7 @@ import {
 } from '../lib/contracts/wallet-identity'
 import { connectFreighter } from '../lib/freighter'
 import { toHex } from '../lib/contracts/bytes'
-import { RISK_BUCKET_COLORS, RISK_BUCKET_LABELS } from '../lib/contracts/types'
+import { KycBadge, RiskBadge } from '../components/Badges'
 import type { AttestationData } from '../lib/contracts/types'
 
 /**
@@ -293,21 +293,11 @@ function GroupScoreLookup({
       )}
       {attestation && (
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-          <span
-            className="inline-block h-4 w-4 rounded-full"
-            style={{ backgroundColor: RISK_BUCKET_COLORS[attestation.riskBucket] ?? '#6b7280' }}
-          />
-          <span className="text-lg font-bold">
-            {RISK_BUCKET_LABELS[attestation.riskBucket] ?? 'UNKNOWN'}
-          </span>
+          <RiskBadge bucket={attestation.riskBucket} />
           <span className="text-sm text-gray-500">
             confidence {(attestation.confidence / 100).toFixed(1)}%
           </span>
-          {attestation.kycVerified && (
-            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
-              KYC verified
-            </span>
-          )}
+          {attestation.kycVerified && <KycBadge />}
         </div>
       )}
     </div>
