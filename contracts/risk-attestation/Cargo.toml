@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [features]
 # Enables the DG6 test which verifies a real Poseidon Groth16 proof against

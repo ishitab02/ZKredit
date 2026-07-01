@@ -1872,6 +1872,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zkredit-e2e-tests"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "zkredit-attestor-registry",
+ "zkredit-mock-lending-pool",
+ "zkredit-risk-attestation",
+ "zkredit-shared",
+ "zkredit-wallet-identity",
+]
+
+[[package]]
 name = "zkredit-mock-lending-pool"
 version = "0.1.0"
 dependencies = [

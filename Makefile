@@ -19,7 +19,8 @@ bootstrap:
 
 build-contracts:
 	rustup target add wasm32v1-none
-	cd contracts && cargo build --target wasm32v1-none --release
+	# e2e-tests is a host-only (std) integration crate — not a wasm contract.
+	cd contracts && cargo build --target wasm32v1-none --release --workspace --exclude zkredit-e2e-tests
 
 test-contracts:
 	cd contracts && cargo test

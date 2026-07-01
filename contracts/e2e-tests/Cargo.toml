@@ -1,0 +1,22 @@
+[package]
+name = "zkredit-e2e-tests"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+doctest = false
+
+# Integration-test-only crate: exercises the four contracts together in one
+# Soroban test env (multi-wallet group resolution, KYC, lending). No wasm target.
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+zkredit-shared = { path = "../shared" }
+zkredit-risk-attestation = { path = "../risk-attestation" }
+zkredit-attestor-registry = { path = "../attestor-registry" }
+zkredit-wallet-identity = { path = "../wallet-identity" }
+zkredit-mock-lending-pool = { path = "../mock-lending-pool" }
