@@ -1,0 +1,78 @@
+[tool.poetry]
+name = "zkredit"
+version = "0.1.0"
+description = "ZKredit — off-chain intelligence (ML + API) for privacy-preserving Stellar risk attestation"
+authors = ["Ishita <ishitabhowmick1312@gmail.com>"]
+readme = "README.md"
+packages = [
+    { include = "ml" },
+    { include = "api" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+httpx = "^0.27"
+tenacity = "^9.0"
+sqlalchemy = { extras = ["asyncio"], version = "^2.0" }
+asyncpg = "^0.30"
+pydantic = "^2.9"
+pydantic-settings = "^2.5"
+fastapi = "^0.115"
+uvicorn = { extras = ["standard"], version = "^0.32" }
+google-cloud-bigquery = "^3.25"
+numpy = "^2.1"
+pandas = "^2.2"
+scikit-learn = "^1.5"
+xgboost = "^2.1"
+shap = "^0.46"
+numba = "^0.61"
+onnx = "^1.17"
+skl2onnx = "^1.17"
+onnxmltools = "^1.12"
+ezkl = "^23.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.7"
+mypy = "^1.13"
+pytest = "^8.3"
+pytest-asyncio = "^0.24"
+respx = "^0.21"
+aiosqlite = "^0.20"
+onnxruntime = "^1.19"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# ---------------------------------------------------------------------------
+# Lint / format
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "ASYNC", "RUF"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["ml", "api"]
+
+# ---------------------------------------------------------------------------
+# Typing — strict on /api and /ml/types.py (per CLAUDE.md §5)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["api.*", "ml.types"]
+strict = true
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["ml/tests", "api/tests"]
