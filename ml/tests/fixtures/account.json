@@ -1,0 +1,10 @@
+{
+  "id": "GCEXAMPLE000000000000000000000000000000000000000000000000",
+  "account_id": "GCEXAMPLE000000000000000000000000000000000000000000000000",
+  "sequence": "123456789",
+  "subentry_count": 2,
+  "last_modified_time": "2026-05-01T12:00:00Z",
+  "balances": [
+    { "asset_type": "native", "balance": "1000.0000000" }
+  ]
+}
