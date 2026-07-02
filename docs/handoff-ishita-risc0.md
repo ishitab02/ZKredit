@@ -110,14 +110,20 @@ The guest receives `identity_commitment` as a public input and echoes it into th
 `RiskAttestation::attest_with_risc0` parses these offsets and binds them into
 `AttestationData`.
 
-**`identity_commitment` derivation (answering the question back to me):** it is the
-32-byte **Poseidon commitment** from the identity/multi-wallet circom circuit —
-`Poseidon(secret)` — the value a user registers via `WalletIdentity::register_wallet`. It is
-**not** computed in the guest; the API supplies it as a public input, the guest echoes it,
-and `attest_with_risc0` binds it to the subject. For a wallet **not** enrolled in an
-identity group we need a single-member convention — I'll finalize the exact derivation
-(likely `Poseidon(wallet_pubkey)` or the registered commitment) and send you the precise
-value the API must produce.
+**`identity_commitment` derivation — FINALIZED:** the 32-byte subject the ML attestation
+binds to. It is **not** computed in the guest; the API supplies it as a public input, the
+guest echoes it into the journal, and `attest_with_risc0` binds it into `AttestationData`.
+Rule the API follows:
+- **Enrolled wallet** (has a `WalletIdentity` registration): use that wallet's registered
+  Poseidon commitment `Poseidon(secret)` — so `get_attestation` resolves the group's shared
+  score across the user's wallets.
+- **Standalone wallet** (not enrolled): use `sha256(b"zkredit-subject:" || wallet_ed25519_pubkey)`
+  as a deterministic per-wallet subject id. (It's not a ZK group commitment — standalone
+  wallets don't share scores — but it binds the attestation to that wallet.)
+
+On-chain this field is opaque 32 bytes; the contract only stores it and (for enrolled
+wallets whose commitment maps to a registered group) resolves the group score. So the
+convention lives entirely in the API — no further contract work needed.
 
 ### 3. Model pinning (image_id + distilled_model_hash) — REVISED per your review
 You're right that "sha256 of the shipped json" breaks: your export hashes a curated
