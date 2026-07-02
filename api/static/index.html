@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ZKredit — Debug Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --muted: #8b949e; --accent: #58a6ff; --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    --b0: #3fb950; --b1: #7bc96f; --b2: #d29922; --b3: #e8863c; --b4: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .health { margin-left: auto; font-size: 12px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .panel h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  input[type=text] {
+    flex: 1; min-width: 260px; background: #0d1117; border: 1px solid var(--border);
+    color: var(--text); padding: 10px 12px; border-radius: 8px; font-family: ui-monospace, monospace;
+  }
+  button {
+    background: var(--accent); color: #0d1117; border: 0; padding: 10px 16px;
+    border-radius: 8px; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: #21262d; color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: .5; cursor: default; }
+  .demo { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .demo button { background: #21262d; color: var(--muted); border: 1px solid var(--border); font-weight: 400; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .stat { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .stat .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .stat .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .bucket { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 700; color: #0d1117; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.no { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid var(--warn); }
+  .badge.yes { background: rgba(63,185,80,.15); color: var(--ok); border: 1px solid var(--ok); }
+  .gauge { height: 10px; background: #0d1117; border-radius: 999px; overflow: hidden; margin-top: 8px; border: 1px solid var(--border); }
+  .gauge > span { display: block; height: 100%; }
+  table { width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; }
+  .mono { font-family: ui-monospace, monospace; }
+  .trunc { word-break: break-all; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+  .chip b { color: var(--accent); }
+  .error { color: var(--err); font-family: ui-monospace, monospace; white-space: pre-wrap; }
+  .muted { color: var(--muted); }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  pre { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow: auto; font-size: 11px; }
+  .honesty { border-color: var(--warn); }
+  .honesty h2 { color: var(--warn); }
+  .honesty ul { margin: 0; padding-left: 18px; }
+  .hidden { display: none; }
+  .spinner { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ZKredit</h1>
+  <span class="sub">off-chain risk attestation · debug dashboard</span>
+  <span class="health" id="health">checking API…</span>
+</header>
+
+<main>
+  <!-- Wallet lookup / attest -->
+  <section class="panel">
+    <h2>Wallet lookup</h2>
+    <div class="row">
+      <input type="text" id="addr" placeholder="Stellar address (G...) — testnet" spellcheck="false" />
+      <button id="attestBtn">Attest</button>
+      <button class="secondary" id="readBtn">Read on-chain</button>
+      <button class="secondary" id="featBtn">Features</button>
+    </div>
+    <div class="demo">
+      <span class="muted" style="align-self:center;font-size:12px;">try:</span>
+      <button data-demo="GXXXX_FRESH_UNKNOWN_ADDRESS_FOR_DEMO_LOW_CONFIDENCE_00000">fresh / unknown</button>
+    </div>
+    <div id="lookupStatus" class="spinner"></div>
+  </section>
+
+  <!-- Attestation result -->
+  <section class="panel hidden" id="resultPanel">
+    <h2>Attestation result</h2>
+    <div class="grid" id="statGrid"></div>
+
+    <div style="margin-top:16px;">
+      <div class="k muted" style="font-size:11px;text-transform:uppercase;">Credit score (off-chain display only, 300–850)</div>
+      <div class="row" style="align-items:baseline;">
+        <div class="v" id="scoreVal" style="font-size:26px;font-weight:700;"></div>
+        <div class="muted" id="scoreNote" style="font-size:12px;">not anchored on-chain · not ZK-proven</div>
+      </div>
+      <div class="gauge"><span id="scoreBar"></span></div>
+    </div>
+
+    <details open>
+      <summary>Top features (distilled model logit contributions)</summary>
+      <table id="topFeatures"><thead><tr><th>feature</th><th class="num">value</th><th class="num">contribution</th></tr></thead><tbody></tbody></table>
+    </details>
+
+    <details open>
+      <summary>Reason codes (full V1 composite — family / rule signals)</summary>
+      <div class="chips" id="reasonCodes"></div>
+    </details>
+
+    <details>
+      <summary>Hashes &amp; proof</summary>
+      <div id="hashBlock" class="mono trunc" style="font-size:12px;line-height:1.8;"></div>
+    </details>
+
+    <details>
+      <summary>Raw JSON</summary>
+      <pre id="rawJson"></pre>
+    </details>
+  </section>
+
+  <!-- Feature summary -->
+  <section class="panel hidden" id="featPanel">
+    <h2>Feature summary (population schema — what attest() scores on)</h2>
+    <div id="featMeta" class="muted" style="font-size:12px;margin-bottom:10px;"></div>
+    <table id="featTable"><thead><tr><th>feature</th><th class="num">value</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <!-- Model info -->
+  <section class="panel">
+    <h2>Model info</h2>
+    <div id="modelInfo" class="spinner">loading…</div>
+  </section>
+
+  <!-- What's proven (Global Rule #2) -->
+  <section class="panel honesty">
+    <h2>What's actually proven</h2>
+    <ul>
+      <li><b>On-chain:</b> risk bucket (u8), confidence, model hashes, proof hash, attestor, timestamp. No raw wallet data ever.</li>
+      <li><b>Credit score (300–850)</b> is an off-chain display value. It is <b>not</b> anchored on-chain and <b>not</b> ZK-proven.</li>
+      <li><b>ZK status:</b> proof generation runs off-chain; on-chain Groth16 verification is not wired yet, so <code>zk_verified = false</code>.</li>
+      <li><b>Proving system</b> is Halo2-KZG (BN254) via EZKL — <b>not</b> Groth16 as the original spec assumed.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const BUCKET_COLORS = ["--b0","--b1","--b2","--b3","--b4"];
+const $ = (id) => document.getElementById(id);
+
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function setStatus(msg, isErr){ const el=$("lookupStatus"); el.textContent=msg||""; el.className = isErr?"error":"spinner"; }
+function fmt(n){ return (typeof n==="number") ? (Math.abs(n)>=1000 ? n.toFixed(0) : n.toFixed(4)) : String(n); }
+
+async function api(path, opts){
+  const res = await fetch(path, opts);
+  const text = await res.text();
+  let body; try { body = JSON.parse(text); } catch { body = text; }
+  if(!res.ok){
+    const detail = (body && body.detail) ? body.detail : (typeof body==="string"?body:JSON.stringify(body));
+    throw new Error(`HTTP ${res.status} — ${detail}`);
+  }
+  return body;
+}
+
+async function checkHealth(){
+  try { const h = await api("/health"); $("health").innerHTML = `<span style="color:var(--ok)">● API ok</span> v${h.version}`; }
+  catch(e){ $("health").innerHTML = `<span style="color:var(--err)">● API unreachable</span>`; }
+}
+
+async function loadModelInfo(){
+  try {
+    const m = await api("/api/v1/model-info");
+    const zk = m.zk_verified_capability
+      ? '<span class="badge yes">zk_verified capable</span>'
+      : '<span class="badge no">zk_verified NOT wired</span>';
+    $("modelInfo").innerHTML = `
+      <div class="chips">
+        <span class="chip">schema <b>${m.feature_schema_version}</b></span>
+        <span class="chip">full dim <b>${m.feature_dimension}</b></span>
+        <span class="chip">distilled feats <b>${m.distilled_features.length}</b></span>
+        <span class="chip">student <b>${m.distilled_model_type}</b></span>
+        <span class="chip">top_k <b>${m.distilled_top_k}</b></span>
+        <span class="chip">space <b>${m.distilled_feature_space}</b></span>
+        <span class="chip">exact <b>${(m.distilled_exact_fidelity*100).toFixed(1)}%</b></span>
+        <span class="chip">within ±1 <b>${(m.distilled_within_one_fidelity*100).toFixed(1)}%</b></span>
+        <span class="chip">${zk}</span>
+      </div>
+      <div class="mono trunc muted" style="font-size:12px;margin-top:10px;line-height:1.8;">
+        proving: ${m.proving_system}<br>
+        full hash: ${m.full_model_hash}<br>
+        distilled hash: ${m.distilled_model_hash}
+      </div>
+      <details><summary>distilled features</summary>
+        <div class="chips" style="margin-top:8px;">${m.distilled_features.map(f=>`<span class="chip">${f}</span>`).join("")}</div>
+      </details>`;
+  } catch(e){ $("modelInfo").innerHTML = `<span class="error">${e.message}</span>`; }
+}
+
+function renderResult(r){
+  const color = cssVar(BUCKET_COLORS[r.risk_bucket] || "--b2");
+  const zkBadge = r.zk_verified ? '<span class="badge yes">zk_verified</span>' : '<span class="badge no">zk_verified: false</span>';
+  const anomaly = r.anomaly ? '<span class="badge no">anomaly</span>' : '<span class="badge yes">normal</span>';
+
+  $("statGrid").innerHTML = `
+    <div class="stat"><div class="k">Risk bucket</div>
+      <div class="v"><span class="bucket" style="background:${color}">${r.risk_bucket_name}</span></div></div>
+    <div class="stat"><div class="k">Confidence</div>
+      <div class="v">${(r.confidence*100).toFixed(1)}%</div>
+      <div class="gauge"><span style="width:${(r.confidence*100).toFixed(1)}%;background:${cssVar('--accent')}"></span></div></div>
+    <div class="stat"><div class="k">Anomaly score</div>
+      <div class="v">${r.anomaly_score.toFixed(3)}</div><div>${anomaly}</div></div>
+    <div class="stat"><div class="k">ZK status</div>
+      <div class="v" style="font-size:14px;margin-top:8px;">${zkBadge}</div>
+      <div class="muted mono trunc" style="font-size:11px;margin-top:6px;">tx: ${r.tx_hash || "—"}</div></div>`;
+
+  const pct = ((r.credit_score - 300) / (850 - 300)) * 100;
+  $("scoreVal").textContent = r.credit_score;
+  $("scoreBar").style.width = pct.toFixed(1) + "%";
+  $("scoreBar").style.background = color;
+
+  const tb = $("topFeatures").querySelector("tbody");
+  tb.innerHTML = (r.top_features||[]).map(f =>
+    `<tr><td>${f.name}</td><td class="num">${fmt(f.value)}</td><td class="num" style="color:${f.contribution>=0?'var(--err)':'var(--ok)'}">${fmt(f.contribution)}</td></tr>`
+  ).join("") || `<tr><td colspan="3" class="muted">none</td></tr>`;
+
+  $("reasonCodes").innerHTML = (r.reason_codes||[]).map(c =>
+    `<span class="chip"><b>${c.code}</b> — ${c.label}</span>`
+  ).join("") || `<span class="muted">no reason codes triggered</span>`;
+
+  $("hashBlock").innerHTML = `
+    full_model_hash: ${r.full_model_hash}<br>
+    distilled_model_hash: ${r.distilled_model_hash}<br>
+    proof_hash: ${r.proof_hash}<br>
+    public_inputs: ${JSON.stringify(r.public_inputs)}<br>
+    schema: ${r.feature_schema_version} · created: ${r.created_at}`;
+
+  $("rawJson").textContent = JSON.stringify(r, null, 2);
+  $("resultPanel").classList.remove("hidden");
+}
+
+async function doAttest(){
+  const addr = $("addr").value.trim();
+  if(!addr){ setStatus("enter an address", true); return; }
+  $("attestBtn").disabled = true;
+  setStatus("ingesting → features → full model → distilled → proof/anchor → submit… (first call hits Horizon)");
+  try {
+    const r = await api(`/api/v1/attest/${encodeURIComponent(addr)}`, { method: "POST" });
+    setStatus("");
+    renderResult(r);
+  } catch(e){ setStatus(e.message, true); }
+  finally { $("attestBtn").disabled = false; }
+}
+
+async function doRead(){
+  const addr = $("addr").value.trim();
+  if(!addr){ setStatus("enter an address", true); return; }
+  setStatus("reading attestation…");
+  try {
+    const r = await api(`/api/v1/attestation/${encodeURIComponent(addr)}`);
+    setStatus("");
+    $("rawJson").textContent = JSON.stringify(r, null, 2);
+    $("resultPanel").classList.remove("hidden");
+    $("resultPanel").querySelector("details:last-of-type").setAttribute("open","");
+  } catch(e){ setStatus(e.message, true); }
+}
+
+async function doFeatures(){
+  const addr = $("addr").value.trim();
+  if(!addr){ setStatus("enter an address", true); return; }
+  setStatus("loading features…");
+  try {
+    const r = await api(`/api/v1/wallet/${encodeURIComponent(addr)}/features`);
+    setStatus("");
+    $("featMeta").textContent = `schema ${r.feature_schema_version} · dimension ${r.dimension}`;
+    const rows = Object.entries(r.summary).sort((a,b)=>a[0].localeCompare(b[0]));
+    $("featTable").querySelector("tbody").innerHTML = rows.map(([k,v]) =>
+      `<tr><td>${k}</td><td class="num">${fmt(v)}</td></tr>`).join("");
+    $("featPanel").classList.remove("hidden");
+  } catch(e){ setStatus(e.message, true); }
+}
+
+$("attestBtn").addEventListener("click", doAttest);
+$("readBtn").addEventListener("click", doRead);
+$("featBtn").addEventListener("click", doFeatures);
+$("addr").addEventListener("keydown", e => { if(e.key==="Enter") doAttest(); });
+document.querySelectorAll(".demo button").forEach(b =>
+  b.addEventListener("click", () => { $("addr").value = b.dataset.demo; doAttest(); }));
+
+checkHealth();
+loadModelInfo();
+</script>
+</body>
+</html>

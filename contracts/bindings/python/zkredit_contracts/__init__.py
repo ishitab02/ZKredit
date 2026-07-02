@@ -1,8 +1,9 @@
 """Minimal Python bindings for the ZKredit Soroban contracts.
 
-Ishita's /api/ layer imports the helper below; it is NOT a full generated
-binding.  It wraps stellar-sdk and targets the hash-anchored attestation path
-by default, matching the DG1 fallback decision.
+The API imports these helpers when real contract submission is configured.
+They wrap ``stellar-sdk`` and target the hash-anchored attestation path by
+default, matching the current DG1 fallback. This is NOT a full generated
+binding.
 """
 
 from .submit_attestation import (

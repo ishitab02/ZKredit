@@ -1,6 +1,6 @@
 """Submit ZKredit attestations to the RiskAttestation contract.
 
-The helper uses the hash-anchored path (`attest_with_hash`) as the default,
+The helper uses the hash-anchored path (``attest_with_hash``) as the default,
 because the on-chain Groth16 verifier is not guaranteed to be available in
 Soroban testnet at the time of writing (DG1 fallback).
 """
@@ -10,23 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from stellar_sdk import (
-    Address as StellarAddress,
-    Asset,
-    Keypair,
-    Network,
-    SorobanServer,
-    TransactionBuilder,
-    xdr,
-)
-from stellar_sdk.contract import ContractClient
+from stellar_sdk import Address as StellarAddress
+from stellar_sdk import Keypair, SorobanServer, TransactionBuilder, xdr
 
 
 @dataclass(frozen=True)
 class AttestationParams:
     """On-chain attestation payload.
 
-    Fields mirror the contract's `AttestationData` struct.  Only a bucket,
+    Fields mirror the contract's ``AttestationData`` struct.  Only a bucket,
     confidence, hashes, timestamps, attestor and wallet are stored on-chain;
     no raw wallet features are included.
     """
@@ -55,43 +47,40 @@ class AttestationParams:
 
 
 def _build_attestation_scval(params: AttestationParams):
-    """Build a Soroban SCVal map matching `AttestationData`.
+    """Build a Soroban SCVal map matching ``AttestationData``.
 
-    A `#[contracttype]` struct is encoded as an SCMap whose keys are the field
-    symbols and whose values are the SCVal of each field. `Option<BytesN<32>>`
-    is encoded as the inner value for `Some` and as `Void` for `None` — there is
-    no separate "some" wrapper in Soroban's value model.
+    A ``#[contracttype]`` struct is encoded as an SCMap whose keys are the field
+    symbols and whose values are the SCVal of each field. ``Option<BytesN<32>>``
+    is encoded as the inner value for ``Some`` and as ``Void`` for ``None`` — there
+    is no separate "some" wrapper in Soroban's value model.
     """
     from stellar_sdk import scval
 
     def hash_val(data: bytes):
         return scval.to_bytes(data)
 
-    if params.identity_commitment:
-        identity_commitment = hash_val(params.identity_commitment)
-    else:
-        identity_commitment = scval.to_void()
+    identity_commitment = (
+        hash_val(params.identity_commitment)
+        if params.identity_commitment
+        else scval.to_void()
+    )
 
-    map_ = {
-        scval.to_symbol("wallet"): scval.to_address(params.wallet),
-        scval.to_symbol("risk_bucket"): scval.to_uint32(params.risk_bucket),
-        scval.to_symbol("confidence"): scval.to_uint32(params.confidence),
-        scval.to_symbol("full_model_hash"): hash_val(params.full_model_hash),
-        scval.to_symbol("distilled_model_hash"): hash_val(params.distilled_model_hash),
-        scval.to_symbol("proof_or_hash"): hash_val(params.proof_or_hash),
-        scval.to_symbol("zk_verified"): scval.to_bool(params.zk_verified),
-        scval.to_symbol("attestor"): scval.to_address(params.attestor),
-        scval.to_symbol("issued_at"): scval.to_uint64(params.issued_at),
-        scval.to_symbol("expires_at"): scval.to_uint64(params.expires_at),
-        scval.to_symbol("kyc_verified"): scval.to_bool(params.kyc_verified),
-        scval.to_symbol("identity_commitment"): identity_commitment,
-    }
-
-    return scval.to_map(map_)
-
-
-def _base64_transaction_envelope(tx: xdr.TransactionEnvelope) -> str:
-    return tx.to_xdr().decode("utf-8")
+    return scval.to_map(
+        {
+            scval.to_symbol("wallet"): scval.to_address(params.wallet),
+            scval.to_symbol("risk_bucket"): scval.to_uint32(params.risk_bucket),
+            scval.to_symbol("confidence"): scval.to_uint32(params.confidence),
+            scval.to_symbol("full_model_hash"): hash_val(params.full_model_hash),
+            scval.to_symbol("distilled_model_hash"): hash_val(params.distilled_model_hash),
+            scval.to_symbol("proof_or_hash"): hash_val(params.proof_or_hash),
+            scval.to_symbol("zk_verified"): scval.to_bool(params.zk_verified),
+            scval.to_symbol("attestor"): scval.to_address(params.attestor),
+            scval.to_symbol("issued_at"): scval.to_uint64(params.issued_at),
+            scval.to_symbol("expires_at"): scval.to_uint64(params.expires_at),
+            scval.to_symbol("kyc_verified"): scval.to_bool(params.kyc_verified),
+            scval.to_symbol("identity_commitment"): identity_commitment,
+        }
+    )
 
 
 def submit_attestation(
@@ -126,11 +115,10 @@ def submit_attestation_hash(
     network_passphrase: str = "Test SDF Network ; September 2015",
     timeout: int = 30,
 ) -> str:
-    """Call `RiskAttestation.attest_with_hash(wallet, data)`."""
+    """Call ``RiskAttestation.attest_with_hash(wallet, data)``."""
     keypair = Keypair.from_secret(attestor_seed)
     server = SorobanServer(rpc_url)
     source = server.load_account(keypair.public_key)
-
     wallet_address = StellarAddress(params.wallet)
     data_val = _build_attestation_scval(params)
 
@@ -164,11 +152,10 @@ def submit_attestation_proof(
     network_passphrase: str = "Test SDF Network ; September 2015",
     timeout: int = 30,
 ) -> str:
-    """Call `RiskAttestation.attest_with_proof(wallet, data, proof_bytes)`."""
+    """Call ``RiskAttestation.attest_with_proof(wallet, data, proof_bytes)``."""
     keypair = Keypair.from_secret(attestor_seed)
     server = SorobanServer(rpc_url)
     source = server.load_account(keypair.public_key)
-
     wallet_address = StellarAddress(params.wallet)
     data_val = _build_attestation_scval(params)
 

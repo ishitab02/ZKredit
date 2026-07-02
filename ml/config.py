@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Postgres cache
     database_url: str = "postgresql+asyncpg://zkredit:zkredit@localhost:5432/zkredit"
+    redis_url: str = "redis://localhost:6379"
 
     # BigQuery (DG3)
     google_application_credentials: str | None = None
@@ -40,6 +41,21 @@ class Settings(BaseSettings):
     # must run as a separate process (the planned ezkl-worker service) to avoid
     # fork/threading deadlocks. When False, attest() hash-anchors (DG1 fallback).
     enable_zk_proof: bool = False
+
+    # Soroban attestation submission. When the contract id and attestor seed are
+    # present, the API can submit to the real contract helper instead of the
+    # local stub cache.
+    soroban_rpc_url: str = "https://soroban-testnet.stellar.org"
+    soroban_network_passphrase: str = "Test SDF Network ; September 2015"
+    contract_id_risk_attestation: str | None = None
+    contract_id_attestor_registry: str | None = None
+    contract_id_mock_lending_pool: str | None = None
+    contract_id_wallet_identity: str | None = None
+    admin_address: str | None = None
+    admin_seed: str | None = None
+    attestor_address: str | None = None
+    attestor_seed: str | None = None
+    attestation_ttl_seconds: int = 30 * 24 * 60 * 60
 
 
 @lru_cache
