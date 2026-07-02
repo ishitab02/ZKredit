@@ -8,6 +8,7 @@ binding.
 
 from .submit_attestation import (
     AttestationParams,
+    build_risc0_attestation_cosigned_xdr,
     submit_attestation,
     submit_attestation_hash,
     submit_attestation_proof,
@@ -15,6 +16,7 @@ from .submit_attestation import (
 
 __all__ = [
     "AttestationParams",
+    "build_risc0_attestation_cosigned_xdr",
     "submit_attestation",
     "submit_attestation_hash",
     "submit_attestation_proof",

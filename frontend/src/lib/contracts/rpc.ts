@@ -120,3 +120,51 @@ export async function invokeContractCall(
   }
   return sent.hash
 }
+
+/**
+ * Finish and submit a partially-authorized attestation transaction.
+ *
+ * `attest_with_risc0` needs both the wallet's and the attestor's authorization.
+ * The attestor service builds the transaction (wallet as source) and signs the
+ * attestor's Soroban auth entry server-side
+ * (`build_risc0_attestation_cosigned_xdr`), returning the partial XDR here. The
+ * wallet's own `require_auth` is a source-account credential, so the wallet only
+ * needs to sign the envelope with Freighter — no per-entry signing required.
+ *
+ * `partialXdr` is the base-64 envelope from the API; `walletAddress` is the
+ * connected Freighter wallet (the tx source, which also pays the fee).
+ * Returns the transaction hash on success; throws on any failure.
+ */
+export async function submitCosignedAttestation(
+  partialXdr: string,
+  walletAddress: string,
+): Promise<string> {
+  const srv = server()
+
+  const signedXdr = await signWithFreighter(
+    partialXdr,
+    NETWORK.passphrase,
+    walletAddress,
+  )
+  const signedTx = TransactionBuilder.fromXDR(signedXdr, NETWORK.passphrase)
+
+  const sent = await srv.sendTransaction(signedTx)
+  if (sent.status === 'ERROR') {
+    throw new Error(`Attestation submission failed: ${JSON.stringify(sent.errorResult)}`)
+  }
+
+  const deadline = Date.now() + POLL_TIMEOUT_MS
+  let getResp = await srv.getTransaction(sent.hash)
+  while (getResp.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for transaction ${sent.hash}`)
+    }
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+    getResp = await srv.getTransaction(sent.hash)
+  }
+
+  if (getResp.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(`Attestation ${sent.hash} failed on-chain (${getResp.status})`)
+  }
+  return sent.hash
+}
