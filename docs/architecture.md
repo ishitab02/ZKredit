@@ -387,9 +387,24 @@ Required UI elements:
 - **Expired attestations**: consumers must check `expires_at`. MockLendingPool falls back to default terms for expired attestations.
 - **Dispute window** (DG1 fallback): hash-anchored attestations can be challenged for 7 days. On-chain Groth16 attestations are final immediately if DG1 passes.
 
----
+### 10.1 Multi-wallet identity — known gaps (close before mainnet)
 
-## 11. Scope-Cut Priority
+The `WalletIdentity` multi-wallet path currently does not meet two guarantees
+asserted above. Both are demo-acceptable but must be closed before real value:
+
+- **Group-score authorization.** `update_group_score(commitment, attestation)`
+  has no caller check — any account can overwrite an active group's shared
+  attestation with arbitrary values (e.g. force VERY_LOW for free good terms, or
+  VERY_HIGH to grief a victim group), and `get_attestation` will serve it. It
+  must be attestor-gated, mirroring `RiskAttestation`'s `AttestorRegistry`
+  check (wire the registry into WalletIdentity and require `is_attestor(caller)`).
+- **Proof-to-wallet binding.** The identity circuit's only public input is the
+  Poseidon commitment, not the linking wallet. Since `proof_bytes` is public in
+  the `register_wallet` transaction, a third party can replay a member's proof to
+  register their own wallet into the group and inherit its score. Fix: add the
+  wallet address as a public input to the identity circuit (new trusted setup) so
+  the proof binds to the caller, and have `register_wallet` check the proof's
+  public inputs equal `[commitment, wallet]`.
 
 If the timeline slips, cut from the bottom up. Do not cut out of order.
 

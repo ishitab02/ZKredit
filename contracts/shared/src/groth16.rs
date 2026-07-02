@@ -37,6 +37,18 @@ const PROOF_N_PUB: u32 = 256;
 const PROOF_INPUTS: u32 = 258;
 const PROOF_MIN_SIZE: u32 = PROOF_INPUTS;
 
+/// Extract the `i`-th public input (a 32-byte big-endian scalar) from a proof
+/// blob. Callers use this to bind a proof to an expected value — e.g. asserting
+/// the proven Poseidon commitment equals the commitment being registered.
+/// Panics if the blob has fewer than `i + 1` public inputs.
+pub fn nth_public_input(env: &Env, proof_bytes: &Bytes, i: u32) -> BytesN<32> {
+    let n_pub = read_u16_be(proof_bytes, PROOF_N_PUB) as u32;
+    assert!(i < n_pub, "groth16: public input index out of range");
+    let offset = PROOF_INPUTS + 32 * i;
+    BytesN::try_from_val(env, proof_bytes.slice(offset..offset + 32).as_val())
+        .expect("groth16: invalid public input bytes")
+}
+
 /// Verify a Groth16 proof.  Returns `true` if valid, `false` if the proof
 /// does not satisfy the verification equation.  Panics on malformed blobs.
 pub fn verify_groth16(env: &Env, vk_bytes: &Bytes, proof_bytes: &Bytes) -> bool {
@@ -183,6 +195,51 @@ mod tests {
         assert!(
             !bn254.pairing_check(g1_vec, g2_vec),
             "DG1 FAIL: e(G1,G2) should not be the identity"
+        );
+    }
+}
+
+/// DG6 gate — verifies a REAL Groth16 proof from the Poseidon identity circuit
+/// (ml/zk/identity_circuit) against Soroban's BN254 host functions.
+///
+/// Enabled only with `--features dg6`, once
+/// `ml/zk/identity_circuit/build.sh` has generated the vectors into
+/// `src/dg6_vectors/`. Off by default so the workspace compiles beforehand.
+#[cfg(all(test, feature = "dg6"))]
+mod dg6_tests {
+    use super::verify_groth16;
+    use soroban_sdk::{Bytes, Env};
+
+    const VK: &[u8] = include_bytes!("dg6_vectors/vk.bin");
+    const PROOF: &[u8] = include_bytes!("dg6_vectors/proof.bin");
+
+    #[test]
+    fn dg6_poseidon_identity_proof_verifies() {
+        let env = Env::default();
+        let vk = Bytes::from_slice(&env, VK);
+        let proof = Bytes::from_slice(&env, PROOF);
+        assert!(
+            verify_groth16(&env, &vk, &proof),
+            "DG6 FAIL: real Poseidon identity proof did not verify on Soroban BN254"
+        );
+    }
+
+    #[test]
+    fn dg6_tampered_public_input_fails() {
+        let env = Env::default();
+        let vk = Bytes::from_slice(&env, VK);
+
+        // Flip the low bit of the last byte — the public `commitment` scalar.
+        // The claimed commitment no longer matches the proof, so vk_x differs
+        // and the pairing check must reject. (Stays a valid Fr, so no panic.)
+        let mut tampered = PROOF.to_vec();
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0x01;
+        let proof = Bytes::from_slice(&env, tampered.as_slice());
+
+        assert!(
+            !verify_groth16(&env, &vk, &proof),
+            "DG6 FAIL: proof with a tampered public input must not verify"
         );
     }
 }

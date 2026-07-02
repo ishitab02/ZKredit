@@ -1,5 +1,5 @@
 import { Address } from '@stellar/stellar-sdk'
-import { simulateContractCall } from './rpc'
+import { invokeContractCall, simulateContractCall } from './rpc'
 import { NETWORK } from './config'
 import type { LoanOffer } from './types'
 
@@ -36,4 +36,20 @@ export async function getLoanTerms(wallet: string): Promise<LoanOffer> {
   } catch {
     return DEFAULT_TERMS
   }
+}
+
+/**
+ * Execute a loan for `wallet` against MockLendingPool, signed via Freighter
+ * (the wallet is the tx source). Returns the transaction hash.
+ *
+ * MockLendingPool is a demo contract — `execute_loan` moves no real capital;
+ * this exercises the full risk-gated borrow lifecycle end-to-end on testnet.
+ */
+export async function executeLoan(wallet: string): Promise<string> {
+  return invokeContractCall(
+    NETWORK.contractIds.mockLendingPool,
+    'execute_loan',
+    [new Address(wallet).toScVal()],
+    wallet,
+  )
 }

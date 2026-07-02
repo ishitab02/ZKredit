@@ -5,6 +5,7 @@ members = [
     "attestor-registry",
     "mock-lending-pool",
     "wallet-identity",
+    "e2e-tests",
 ]
 resolver = "2"
 

@@ -29,6 +29,7 @@ model_store/
 # --- Rust / Soroban build artifacts ---
 /target
 /contracts/target
+**/target/
 
 # Soroban test snapshots (regenerated on every `cargo test`)
 test_snapshots/

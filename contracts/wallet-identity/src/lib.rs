@@ -1,7 +1,7 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
-use zkredit_shared::{AttestationData, DataKey, Error};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env};
+use zkredit_shared::{groth16, AttestationData, DataKey, Error};
 
 #[contract]
 pub struct WalletIdentity;
@@ -12,9 +12,51 @@ impl WalletIdentity {
         env.storage().instance().set(&DataKey::Admin, &admin);
     }
 
+    /// Register the Groth16 verification key for the Poseidon identity circuit.
+    /// Admin-only. Once set, `register_wallet` requires a valid proof that the
+    /// caller knows the secret behind the commitment being registered.
+    pub fn set_identity_vk(env: Env, vk_bytes: Bytes) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::IdentityVerificationKey, &vk_bytes);
+        Ok(())
+    }
+
     /// Register a wallet as a member of the identity group identified by `commitment`.
-    pub fn register_wallet(env: Env, wallet: Address, commitment: BytesN<32>) -> Result<(), Error> {
+    ///
+    /// If an identity VK has been registered (`set_identity_vk`), `proof_bytes`
+    /// must be a valid Groth16 proof whose public input equals `commitment` —
+    /// i.e. the caller proves knowledge of the secret without revealing it.
+    /// If no VK is set, registration is optimistic (proof ignored).
+    pub fn register_wallet(
+        env: Env,
+        wallet: Address,
+        commitment: BytesN<32>,
+        proof_bytes: Bytes,
+    ) -> Result<(), Error> {
         wallet.require_auth();
+
+        // Proof-gate when an identity VK is configured.
+        let vk: Option<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::IdentityVerificationKey);
+        if let Some(vk_bytes) = vk {
+            if !groth16::verify_groth16(&env, &vk_bytes, &proof_bytes) {
+                return Err(Error::InvalidProof);
+            }
+            // Bind the proof to this commitment: the proven public input (the
+            // Poseidon commitment) must equal the commitment being registered.
+            if groth16::nth_public_input(&env, &proof_bytes, 0) != commitment {
+                return Err(Error::InvalidProof);
+            }
+        }
 
         let existing: Option<BytesN<32>> = env
             .storage()
@@ -116,10 +158,16 @@ impl WalletIdentity {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::BytesN;
+    use soroban_sdk::{Bytes, BytesN};
 
     fn commitment(env: &Env, byte: u8) -> BytesN<32> {
         BytesN::from_array(env, &[byte; 32])
+    }
+
+    // No identity VK is set in these tests, so registration takes the optimistic
+    // path and the proof bytes are ignored.
+    fn no_proof(env: &Env) -> Bytes {
+        Bytes::new(env)
     }
 
     fn attestation(env: &Env, wallet: &Address, commitment: BytesN<32>) -> AttestationData {
@@ -156,15 +204,16 @@ mod tests {
         let c1 = commitment(&env, 1);
         let c2 = commitment(&env, 2);
 
-        client.register_wallet(&wallet, &c1);
+        let np = no_proof(&env);
+        client.register_wallet(&wallet, &c1, &np);
         // Same wallet, same commitment → already a member.
         assert_eq!(
-            client.try_register_wallet(&wallet, &c1),
+            client.try_register_wallet(&wallet, &c1, &np),
             Err(Ok(Error::AlreadyInGroup))
         );
         // Same wallet, different commitment → conflict.
         assert_eq!(
-            client.try_register_wallet(&wallet, &c2),
+            client.try_register_wallet(&wallet, &c2, &np),
             Err(Ok(Error::CommitmentConflict))
         );
     }
@@ -176,8 +225,9 @@ mod tests {
         let w2 = Address::generate(&env);
         let c = commitment(&env, 7);
 
-        client.register_wallet(&w1, &c);
-        client.register_wallet(&w2, &c);
+        let np = no_proof(&env);
+        client.register_wallet(&w1, &c, &np);
+        client.register_wallet(&w2, &c, &np);
 
         let att = attestation(&env, &w1, c.clone());
         client.update_group_score(&c, &att);

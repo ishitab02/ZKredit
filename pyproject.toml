@@ -19,6 +19,7 @@ pydantic = "^2.9"
 pydantic-settings = "^2.5"
 fastapi = "^0.115"
 uvicorn = { extras = ["standard"], version = "^0.32" }
+stellar-sdk = "^12.3"
 google-cloud-bigquery = "^3.25"
 numpy = "^2.1"
 pandas = "^2.2"

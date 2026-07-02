@@ -1,0 +1,9 @@
+{
+  "name": "zkredit-identity-circuit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Poseidon identity-commitment circuit (DG6) for ZKredit multi-wallet linking",
+  "dependencies": {
+    "circomlib": "^2.0.5"
+  }
+}

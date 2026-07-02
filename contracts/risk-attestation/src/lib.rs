@@ -1,9 +1,7 @@
 #![no_std]
 
-mod groth16;
-
 use soroban_sdk::{contract, contractclient, contractimpl, Address, Bytes, BytesN, Env};
-use zkredit_shared::{AttestationData, DataKey, Error};
+use zkredit_shared::{groth16, risc0, AttestationData, DataKey, Error};
 
 #[contractclient(name = "AttestorRegistryClient")]
 pub trait AttestorRegistryInterface {
@@ -61,6 +59,80 @@ impl RiskAttestation {
         env.storage()
             .instance()
             .set(&DataKey::WalletIdentityContract, &contract_id);
+        Ok(())
+    }
+
+    /// Register the whitelisted RISC Zero guest image id (the distilled-model guest).
+    /// Admin-only. Only receipts from this image verify in `attest_with_risc0`.
+    pub fn set_risc0_image_id(env: Env, image_id: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::Risc0ImageId, &image_id);
+        Ok(())
+    }
+
+    /// Attest a wallet's risk from a RISC Zero zkVM Groth16 receipt (the distilled-model
+    /// guest). Verifies the receipt against the whitelisted image id, then binds the proven
+    /// journal fields (risk_bucket, confidence, identity_commitment, distilled_model_hash)
+    /// into the stored attestation with `zk_verified = true`.
+    ///
+    /// `seal` is the Groth16 proof (a|b|c, 256 bytes; selector stripped); `journal` is the
+    /// 72-byte guest journal. Caller supplies the non-proven metadata in `data` (attestor,
+    /// timestamps, model hashes); the proven fields are overwritten from the journal so the
+    /// stored record always reflects the proof.
+    pub fn attest_with_risc0(
+        env: Env,
+        wallet: Address,
+        mut data: AttestationData,
+        seal: Bytes,
+        journal: Bytes,
+    ) -> Result<(), Error> {
+        wallet.require_auth();
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Attestation(wallet.clone()))
+        {
+            return Err(Error::AlreadyAttested);
+        }
+
+        let registry_id = Self::get_attestor_registry_id(&env)?;
+        let registry = AttestorRegistryClient::new(&env, &registry_id);
+        if !registry.is_attestor(&data.attestor) {
+            return Err(Error::UnauthorizedAttestor);
+        }
+        data.attestor.require_auth();
+
+        let image_id: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Risc0ImageId)
+            .ok_or(Error::Risc0ImageNotSet)?;
+
+        if !risc0::verify_receipt(&env, &seal, &image_id, &journal) {
+            return Err(Error::InvalidProof);
+        }
+
+        let (risk_bucket, confidence, identity_commitment, distilled_model_hash) =
+            risc0::parse_journal(&env, &journal).ok_or(Error::InvalidInputs)?;
+
+        // Bind the proven journal fields into the stored attestation.
+        data.risk_bucket = risk_bucket;
+        data.confidence = confidence;
+        data.identity_commitment = Some(identity_commitment);
+        data.distilled_model_hash = distilled_model_hash;
+        data.zk_verified = true;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Attestation(wallet), &data);
+        zkredit_shared::emit_attestation_written(&env, &data);
         Ok(())
     }
 

@@ -1,0 +1,20 @@
+[package]
+name = "zkredit-risk-model"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Distilled RandomForest inference over the canonical RISC Zero artifact. Shared by the zkVM guest and host-side parity tests so both run identical code."
+
+[workspace]
+
+[dependencies]
+# `sha::Impl` auto-selects the in-circuit-accelerated SHA-256 when compiled into
+# the guest, and a plain software implementation on host — same API either way.
+risc0-zkvm = { version = "3.0", default-features = false, features = ["std"] }
+
+[build-dependencies]
+# Parses the canonical artifact once at build time (host-side, not in-guest) into
+# static arrays baked into the guest. Keeps runtime float/JSON parsing — and its
+# soft-float RV32IM cycle cost — entirely out of the proven program.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

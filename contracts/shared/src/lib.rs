@@ -1,5 +1,8 @@
 #![no_std]
 
+pub mod groth16;
+pub mod risc0;
+
 use soroban_sdk::{contracterror, contractevent, contracttype, Address, BytesN, Env};
 
 /// Common on-chain attestation record.
@@ -39,6 +42,12 @@ pub enum DataKey {
     IdentityAttestation(BytesN<32>),
     /// Count of wallets enrolled in an identity group (commitment → u32).
     IdentityMemberCount(BytesN<32>),
+    /// Groth16 VK for the Poseidon identity circuit, stored by WalletIdentity.
+    /// When set, `register_wallet` requires a valid proof of secret knowledge.
+    IdentityVerificationKey,
+    /// Whitelisted RISC Zero guest image id (the distilled-model guest), stored by
+    /// RiskAttestation. Only receipts from this image verify in `attest_with_risc0`.
+    Risc0ImageId,
     /// WalletIdentity contract address, stored by RiskAttestation for cross-contract resolution.
     WalletIdentityContract,
     /// Address of the AttestorRegistry contract used to validate attestor addresses.
@@ -66,6 +75,8 @@ pub enum Error {
     AlreadyInGroup = 12,
     /// Caller is not an authorized attestor in the AttestorRegistry.
     UnauthorizedAttestor = 13,
+    /// RISC Zero guest image id has not been registered (set_risc0_image_id).
+    Risc0ImageNotSet = 14,
 }
 
 /// Standard attestation-written event.

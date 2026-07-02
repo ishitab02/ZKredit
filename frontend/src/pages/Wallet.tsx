@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getAttestation } from '../lib/contracts/risk-attestation'
 import { RISK_BUCKET_COLORS, RISK_BUCKET_LABELS } from '../lib/contracts/types'
+import { KycBadge, ZkBadge } from '../components/Badges'
 import type { AttestationData } from '../lib/contracts/types'
 
 export function Wallet() {
@@ -68,20 +69,8 @@ function RiskBucketCard({ attestation }: { attestation: AttestationData }) {
       <div className="flex flex-wrap items-center gap-3">
         <span className="inline-block h-4 w-4 rounded-full" style={{ backgroundColor: color }} />
         <span className="text-2xl font-bold">{label}</span>
-        {attestation.zkVerified ? (
-          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/20 dark:text-green-400">
-            ZK-verified
-          </span>
-        ) : (
-          <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">
-            hash-anchored
-          </span>
-        )}
-        {attestation.kycVerified && (
-          <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
-            KYC verified
-          </span>
-        )}
+        <ZkBadge verified={attestation.zkVerified} />
+        {attestation.kycVerified && <KycBadge />}
       </div>
       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
         Confidence:{' '}
