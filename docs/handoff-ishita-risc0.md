@@ -79,21 +79,21 @@ The guest runs the distilled RandomForest in IEEE-754 `f64` — same as CPython.
   **discrete** outputs (`risk_bucket` via argmax, `confidence` in integer bps), which are
   immune to sub-ULP float noise anyway.
 
-So **no scale / bit-width needed.** To make parity exact + robust, we pin these (guest will
-match your reference exactly):
-- **Op order:** accumulate per-class scores tree-by-tree in tree-index order, then argmax /
-  normalize. (I'll implement the guest to replicate your JSON-table reference's exact order,
-  so guest ≡ your reference with delta 0; your reference-vs-sklearn 5e-17 gap is separate and
-  fine.)
-- **No `f64::mul_add` / FMA** on either side (Rust soft-float won't fuse unless called; keep
-  numpy from using fma — plain sums are fine).
+So **no scale / bit-width needed.** To make parity exact + robust, we pin these (guest
+replicates your reference exactly):
+- **Canonical op order** (this is the spec — guest matches it): for each tree in tree-index
+  order, normalize that tree's leaf counts to a per-class prob vector; accumulate into a
+  class-score accumulator; after all trees, divide the accumulator by `n_trees`. Then
+  `risk_bucket = argmax`, `confidence = max prob`. No FMA / `mul_add` on either side.
+- **confidence_bps — use the SAME explicit expression both sides** (do NOT rely on
+  `f64::round` vs Python `round`; they disagree on `x.5` — Rust rounds half-away-from-zero,
+  Python `round` is banker's/half-to-even):
+  - Rust: `(p * 10000.0 + 0.5).floor() as u32` (clamp `0..=10000`)
+  - Python: `min(10000, math.floor(p * 10000 + 0.5))`
+  These are byte-identical for all non-negative `p`. Also assert no test row's `p*10000`
+  lands within ~1e-6 of an `x.5` boundary (and no top-2 argmax margin within ~1e-6).
 - **Assert parity on the discrete outputs** `(risk_bucket, confidence_bps)`, not raw probs.
-  Flag any test row whose top-2 class margin or bps value sits within ~1e-6 of a boundary
-  (none should — but confirm, since that's the only thing sub-ULP noise could flip).
-- **confidence_bps** = `(max_class_prob * 10000.0).round() as u32`, clamped to `0..=10000`.
-  Both sides use exactly this expression (round-half-to-even, Rust `f64::round` = away-from-
-  zero — use the same in Python: `int(round(p*10000))` matches for non-tie values; agree on
-  a tie rule if any row lands on `x.5`).
+  Emit `confidence_bps` in your reference (not a 0–1 float) so the assertion is exact.
 
 ### 2. Journal encoding (fixed 72-byte layout, committed via `env::commit_slice`)
 Word-aligned (72 = 18×4), no risc0-serde framing, so the contract parses at fixed offsets.
@@ -110,14 +110,35 @@ The guest receives `identity_commitment` as a public input and echoes it into th
 `RiskAttestation::attest_with_risc0` parses these offsets and binds them into
 `AttestationData`.
 
-### 3. Model pinning (image_id + distilled_model_hash)
-**Bake the model into the guest** (e.g. `include_bytes!("…/risc0_distilled_model.json")`,
-parsed in-guest) so the **guest image_id cryptographically pins the exact 50-tree model +
-preprocessing + feature indices.** Then:
-- The contract **whitelists the guest image_id** → only proofs from *the* canonical model
-  verify.
-- The guest also commits `distilled_model_hash` = `sha256(<canonical model bytes>)`; your
-  export computes the same value, and the contract checks it equals the registered hash.
-- Two independent bindings (image_id + hash). Let's agree the exact canonical serialization
-  we both hash so the values match — simplest is `sha256` of the exact
-  `risc0_distilled_model.json` bytes you ship.
+**`identity_commitment` derivation (answering the question back to me):** it is the
+32-byte **Poseidon commitment** from the identity/multi-wallet circom circuit —
+`Poseidon(secret)` — the value a user registers via `WalletIdentity::register_wallet`. It is
+**not** computed in the guest; the API supplies it as a public input, the guest echoes it,
+and `attest_with_risc0` binds it to the subject. For a wallet **not** enrolled in an
+identity group we need a single-member convention — I'll finalize the exact derivation
+(likely `Poseidon(wallet_pubkey)` or the registered commitment) and send you the precise
+value the API must produce.
+
+### 3. Model pinning (image_id + distilled_model_hash) — REVISED per your review
+You're right that "sha256 of the shipped json" breaks: your export hashes a curated
+`_hash_material` subset (compact separators) and then embeds that hash *inside* the
+pretty-printed file — so my "hash the whole file" idea both mismatches yours and has a
+chicken-and-egg problem. **Adopting your reconciliation:**
+
+- Ship a **canonical guest artifact** containing only the semantic fields (trees,
+  preprocessing, feature indices, the journal/contract) — i.e. today's `_hash_material` —
+  serialized deterministically, **with no `distilled_model_hash` field inside it and no
+  volatile metrics.** (Small refactor of `build_risc0_payload`.)
+- `distilled_model_hash = sha256(<exact bytes of that canonical artifact>)`, computed
+  identically by your exporter and by the guest's `include_bytes!` over the same file.
+- Metrics / report live in a **separate human-facing file**, outside the hash.
+- The guest `include_bytes!`s the canonical artifact ⇒ **image_id also pins it**; the
+  contract whitelists image_id *and* checks the committed `distilled_model_hash`. Two
+  independent bindings.
+- One detail so guest-parsed floats == your floats: serialize thresholds/probs with
+  **round-trip-safe float formatting** (Python `repr`), and both sides parse with the
+  standard correctly-rounded decimal→f64 (Rust `str::parse::<f64>`, Python `float`). The
+  guest only *parses* the bytes it hashes — it never re-serializes — so there's no
+  cross-language formatting risk for the hash itself.
+
+Nail this canonical-artifact format down with me before I write the guest.
