@@ -1,0 +1,18 @@
+{
+  "_links": {
+    "next": {
+      "href": "/accounts/GCEXAMPLE000000000000000000000000000000000000000000000000/operations?order=asc&limit=200&cursor=3"
+    }
+  },
+  "_embedded": {
+    "records": [
+      {
+        "id": "3",
+        "type": "change_trust",
+        "type_i": 6,
+        "transaction_hash": "ccc333",
+        "created_at": "2024-03-01T00:00:00Z"
+      }
+    ]
+  }
+}

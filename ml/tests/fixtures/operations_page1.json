@@ -1,0 +1,25 @@
+{
+  "_links": {
+    "next": {
+      "href": "/accounts/GCEXAMPLE000000000000000000000000000000000000000000000000/operations?order=asc&limit=200&cursor=2"
+    }
+  },
+  "_embedded": {
+    "records": [
+      {
+        "id": "1",
+        "type": "create_account",
+        "type_i": 0,
+        "transaction_hash": "aaa111",
+        "created_at": "2024-01-01T00:00:00Z"
+      },
+      {
+        "id": "2",
+        "type": "payment",
+        "type_i": 1,
+        "transaction_hash": "bbb222",
+        "created_at": "2024-02-01T00:00:00Z"
+      }
+    ]
+  }
+}
