@@ -12,23 +12,9 @@ use ark_ff::{BigInteger, PrimeField};
 use risc0_zkvm::sha::{Digest, Digestible};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use std::fs;
+use zkredit_risc0_host::{load_commitment, load_selected_vector};
 use zkredit_risc0_methods::{RISK_GUEST_ELF, RISK_GUEST_ID};
 use zkredit_risk_model::{model_hash, Model};
-
-/// Demo input for the fixture receipt: the 30-dim selected transformed feature
-/// vector `((i*7) % 97)/50 - 1` (seed 0 of the parity generator). Deterministic
-/// so the committed journal is reproducible. In production the attestor API
-/// supplies a real preprocessed+selected vector as the private guest input.
-fn demo_selected_vector() -> Vec<f64> {
-    (0..30)
-        .map(|i| ((i * 7) % 97) as f64 / 50.0 - 1.0)
-        .collect()
-}
-
-/// Demo `identity_commitment` (public binding echoed into the journal). A real
-/// deployment derives this per docs/handoff-ishita-risc0.md §13; the fixture
-/// uses a recognizable constant.
-const DEMO_COMMITMENT: [u8; 32] = [7u8; 32];
 
 // RISC Zero 3.0.5 Groth16 verifying key coordinates (decimal), from
 // Groth16ReceiptVerifierParameters::default() via ml/risc0/params-dump.
@@ -133,9 +119,11 @@ fn main() {
     fs::write(format!("{out}/vk.bin"), vk_blob()).unwrap();
     println!("vk.bin written ({} bytes)", vk_blob().len());
 
-    // Build the private + public guest inputs and predict natively first, so we
-    // can assert the proven journal matches the plain (non-ZK) model run.
-    let selected = demo_selected_vector();
+    // Build the private + public guest inputs (real vector from the attestor via
+    // ZKREDIT_FEATURE_VECTOR, else the demo vector) and predict natively first, so
+    // we can assert the proven journal matches the plain (non-ZK) model run.
+    let selected = load_selected_vector();
+    let commitment = load_commitment();
     let native = Model::load().predict(&selected);
     let expected_hash = model_hash();
     println!(
@@ -148,7 +136,7 @@ fn main() {
     let env = ExecutorEnv::builder()
         .write(&selected)
         .unwrap()
-        .write(&DEMO_COMMITMENT)
+        .write(&commitment)
         .unwrap()
         .build()
         .unwrap();
@@ -168,7 +156,7 @@ fn main() {
         let bps = u32::from_be_bytes(j[4..8].try_into().unwrap());
         assert_eq!(bucket, native.risk_bucket, "proven bucket != native");
         assert_eq!(bps, native.confidence_bps, "proven bps != native");
-        assert_eq!(&j[8..40], &DEMO_COMMITMENT, "commitment not echoed");
+        assert_eq!(&j[8..40], &commitment, "commitment not echoed");
         assert_eq!(&j[40..72], &expected_hash, "model hash mismatch");
         println!("journal parity vs native run ✓ (bucket={bucket} bps={bps})");
     }

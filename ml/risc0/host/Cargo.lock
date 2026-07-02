@@ -3552,6 +3552,7 @@ dependencies = [
  "ark-ff",
  "hex",
  "risc0-zkvm",
+ "serde_json",
  "zkredit-risc0-methods",
  "zkredit-risk-model",
 ]
