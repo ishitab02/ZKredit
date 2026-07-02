@@ -143,8 +143,9 @@ else
 fi
 
 # Whitelist the RISC Zero guest image id so attest_with_risc0 accepts its receipts.
-# Uses the committed fixture image (ml/risc0); replace when the real distilled-model
-# guest ships. Regenerate with: (cd ml/risc0/host && cargo run --release --bin zkredit-risc0-host)
+# This is the real distilled-model guest (ml/risc0: runs the canonical RandomForest
+# artifact in-zkVM). Regenerate the image id + receipt vectors with:
+#   (cd ml/risc0/host && RISC0_WORK_DIR=$HOME/r0work cargo run --release --bin zkredit-risc0-host)
 RISC0_IMAGE_FILE="${REPO_ROOT}/contracts/shared/src/risc0_vectors/image_id.bin"
 if [ -f "${RISC0_IMAGE_FILE}" ]; then
     IMAGE_HEX="$(python3 -c "import sys; sys.stdout.write(open(sys.argv[1],'rb').read().hex())" "${RISC0_IMAGE_FILE}")"

@@ -28,6 +28,14 @@ fn image_id(env: &Env) -> BytesN<32> {
     BytesN::from_array(env, &a)
 }
 
+fn hex_to_32(s: &str) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap();
+    }
+    out
+}
+
 fn setup(register_image: bool) -> Ctx<'static> {
     let env = Env::default();
     env.mock_all_auths();
@@ -86,9 +94,13 @@ fn attest_with_risc0_binds_journal_and_sets_zk_verified() {
     );
 
     let got = c.risk.get_attestation(&wallet).unwrap();
-    // Fixture journal: bucket 1, confidence 8500, commitment [7;32], model_hash [0xAB;32].
-    assert_eq!(got.risk_bucket, 1);
-    assert_eq!(got.confidence, 8500);
+    // Real distilled-model guest on the demo feature vector (host seed-0 vector):
+    // bucket 4, confidence_bps 4251, commitment [7;32], distilled_model_hash =
+    // sha256(canonical artifact). Matches the Python exported reference exactly.
+    let model_hash: [u8; 32] =
+        hex_to_32("a0cd691502db6f69874fe5ad4a6123d2854f416f48ca9ce8dc161886b4a0e27e");
+    assert_eq!(got.risk_bucket, 4);
+    assert_eq!(got.confidence, 4251);
     assert!(got.zk_verified);
     assert_eq!(
         got.identity_commitment,
@@ -96,7 +108,7 @@ fn attest_with_risc0_binds_journal_and_sets_zk_verified() {
     );
     assert_eq!(
         got.distilled_model_hash,
-        BytesN::from_array(env, &[0xABu8; 32])
+        BytesN::from_array(env, &model_hash)
     );
     assert_eq!(got.attestor, c.attestor);
 }

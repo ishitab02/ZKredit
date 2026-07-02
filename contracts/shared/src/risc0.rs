@@ -224,6 +224,14 @@ mod tests {
         BytesN::from_array(env, &a)
     }
 
+    fn hex_to_32(s: &str) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        for (i, byte) in out.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap();
+        }
+        out
+    }
+
     #[test]
     fn verify_real_receipt() {
         let env = Env::default();
@@ -254,10 +262,18 @@ mod tests {
         let env = Env::default();
         let (rb, conf, commitment, mh) =
             parse_journal(&env, &Bytes::from_slice(&env, REAL_JOURNAL)).unwrap();
-        assert_eq!(rb, 1);
-        assert_eq!(conf, 8500);
+        // Real distilled-model guest output on the demo feature vector: bucket 4,
+        // confidence_bps 4251, commitment [7;32], model_hash = sha256(canonical artifact).
+        assert_eq!(rb, 4);
+        assert_eq!(conf, 4251);
         assert_eq!(commitment, BytesN::from_array(&env, &[7u8; 32]));
-        assert_eq!(mh, BytesN::from_array(&env, &[0xABu8; 32]));
+        assert_eq!(
+            mh,
+            BytesN::from_array(
+                &env,
+                &hex_to_32("a0cd691502db6f69874fe5ad4a6123d2854f416f48ca9ce8dc161886b4a0e27e")
+            )
+        );
         assert!(parse_journal(&env, &Bytes::from_slice(&env, &[0u8; 10])).is_none());
     }
 

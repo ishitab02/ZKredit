@@ -11,3 +11,4 @@ path = "src/main.rs"
 
 [dependencies]
 risc0-zkvm = { version = "3.0", default-features = false, features = ["std"] }
+zkredit-risk-model = { path = "../../model" }
