@@ -62,3 +62,62 @@ Groth16 receipt cheaply.
 - The privacy model (only bucket/confidence/hashes on-chain; raw features private).
 - The attestation API surface / `AttestationData` fields.
 - The identity/multi-wallet ZK (that's a separate circom Groth16 circuit, already working).
+
+---
+
+## Guest numerics + journal spec (answer to "f64 or fixed-point?")
+
+### 1. Numerics: **f64** (not fixed-point)
+The guest runs the distilled RandomForest in IEEE-754 `f64` — same as CPython. Rationale:
+- The zkVM (RV32IM) has no float hardware, so f64 is soft-float, but a ~400-comparison
+  model is negligible next to the STARK→Groth16 wrap. Cycles are a non-issue.
+- **Soundness doesn't depend on it:** the proof attests to *whatever the guest computes*.
+  "Parity" only means your Python reference predicts the guest's output — a testing
+  concern, not a security one.
+- IEEE-754 `+ - * /` and comparisons are correctly-rounded and deterministic, so guest
+  and Python are **bit-identical** given the same op order and no FMA. And the guest emits
+  **discrete** outputs (`risk_bucket` via argmax, `confidence` in integer bps), which are
+  immune to sub-ULP float noise anyway.
+
+So **no scale / bit-width needed.** To make parity exact + robust, we pin these (guest will
+match your reference exactly):
+- **Op order:** accumulate per-class scores tree-by-tree in tree-index order, then argmax /
+  normalize. (I'll implement the guest to replicate your JSON-table reference's exact order,
+  so guest ≡ your reference with delta 0; your reference-vs-sklearn 5e-17 gap is separate and
+  fine.)
+- **No `f64::mul_add` / FMA** on either side (Rust soft-float won't fuse unless called; keep
+  numpy from using fma — plain sums are fine).
+- **Assert parity on the discrete outputs** `(risk_bucket, confidence_bps)`, not raw probs.
+  Flag any test row whose top-2 class margin or bps value sits within ~1e-6 of a boundary
+  (none should — but confirm, since that's the only thing sub-ULP noise could flip).
+- **confidence_bps** = `(max_class_prob * 10000.0).round() as u32`, clamped to `0..=10000`.
+  Both sides use exactly this expression (round-half-to-even, Rust `f64::round` = away-from-
+  zero — use the same in Python: `int(round(p*10000))` matches for non-tie values; agree on
+  a tie rule if any row lands on `x.5`).
+
+### 2. Journal encoding (fixed 72-byte layout, committed via `env::commit_slice`)
+Word-aligned (72 = 18×4), no risc0-serde framing, so the contract parses at fixed offsets.
+**u32s are big-endian; 32-byte fields are raw:**
+
+| offset | field | type |
+|---|---|---|
+| `[0..4]`   | `risk_bucket`          | u32 BE (0..=4) |
+| `[4..8]`   | `confidence_bps`       | u32 BE (0..=10000) |
+| `[8..40]`  | `identity_commitment`  | `[u8; 32]` (binds the proof to the subject wallet/group) |
+| `[40..72]` | `distilled_model_hash` | `[u8; 32]` |
+
+The guest receives `identity_commitment` as a public input and echoes it into the journal;
+`RiskAttestation::attest_with_risc0` parses these offsets and binds them into
+`AttestationData`.
+
+### 3. Model pinning (image_id + distilled_model_hash)
+**Bake the model into the guest** (e.g. `include_bytes!("…/risc0_distilled_model.json")`,
+parsed in-guest) so the **guest image_id cryptographically pins the exact 50-tree model +
+preprocessing + feature indices.** Then:
+- The contract **whitelists the guest image_id** → only proofs from *the* canonical model
+  verify.
+- The guest also commits `distilled_model_hash` = `sha256(<canonical model bytes>)`; your
+  export computes the same value, and the contract checks it equals the registered hash.
+- Two independent bindings (image_id + hash). Let's agree the exact canonical serialization
+  we both hash so the values match — simplest is `sha256` of the exact
+  `risc0_distilled_model.json` bytes you ship.
