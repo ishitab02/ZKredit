@@ -96,10 +96,17 @@ truth; VK + fixtures committed in `risc0_vectors/`.
   single-proof benchmark).
 
 **Phase C — attestation integration:**
-- C1: `RiskAttestation::attest_with_risc0(...)` verifies the receipt (A1), binds the
-  journal to `AttestationData`, sets `zk_verified = true`. Admin setters register the guest
-  **image id** + RISC Zero VK (new `DataKey` variants in `contracts/shared/src/lib.rs`).
-- C2: attestor API produces receipts; end-to-end demo; lending prices off the proven bucket.
+- **C1 — DONE (2026-07-02). ✅** `RiskAttestation::attest_with_risc0(wallet, data, seal,
+  journal)` verifies the receipt against the whitelisted image id (`set_risc0_image_id`,
+  admin), parses the 72-byte journal via `risc0::parse_journal`, and binds risk_bucket /
+  confidence / identity_commitment / distilled_model_hash into `AttestationData` with
+  `zk_verified = true`. Tested end-to-end in `contracts/e2e-tests/tests/risc0_attest.rs`
+  (binds journal + sets zk_verified; rejects missing image / tampered journal). The fixture
+  guest now emits the real 72-byte structured journal; deploy-testnet.sh registers the image
+  id. `risc0` module un-gated (VK/fixtures committed). 22 workspace tests green.
+- **C2 — pending Ishita:** swap the fixture guest for the real distilled-model (SmartCore)
+  guest — blocked on the canonical model artifact (see docs/handoff-ishita-risc0.md).
+  Attestor API produces receipts; lending prices off the proven bucket.
 
 ## Critical files
 

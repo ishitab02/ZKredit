@@ -139,6 +139,35 @@ pub fn verify_receipt(env: &Env, seal: &Bytes, image_id: &BytesN<32>, journal: &
     verify_seal(env, seal, [cr0, cr1, claim0, claim1, bn254_id])
 }
 
+/// ZKredit journal layout: `risk_bucket(u32 BE) | confidence_bps(u32 BE) |
+/// identity_commitment([u8;32]) | distilled_model_hash([u8;32])` = 72 bytes.
+pub const JOURNAL_LEN: u32 = 72;
+
+/// Parse the 72-byte ZKredit journal into
+/// `(risk_bucket, confidence_bps, identity_commitment, distilled_model_hash)`.
+/// Returns `None` if the length is not exactly [`JOURNAL_LEN`].
+pub fn parse_journal(env: &Env, journal: &Bytes) -> Option<(u32, u32, BytesN<32>, BytesN<32>)> {
+    if journal.len() != JOURNAL_LEN {
+        return None;
+    }
+    let mut buf = [0u8; 72];
+    for (i, b) in journal.iter().enumerate() {
+        buf[i] = b;
+    }
+    let risk_bucket = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
+    let confidence = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
+    let mut commitment = [0u8; 32];
+    commitment.copy_from_slice(&buf[8..40]);
+    let mut model_hash = [0u8; 32];
+    model_hash.copy_from_slice(&buf[40..72]);
+    Some((
+        risk_bucket,
+        confidence,
+        BytesN::from_array(env, &commitment),
+        BytesN::from_array(env, &model_hash),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +247,18 @@ mod tests {
             !verify_receipt(&env, &seal, &image_id(&env), &journal),
             "a receipt with a tampered journal must not verify"
         );
+    }
+
+    #[test]
+    fn parse_journal_extracts_fields() {
+        let env = Env::default();
+        let (rb, conf, commitment, mh) =
+            parse_journal(&env, &Bytes::from_slice(&env, REAL_JOURNAL)).unwrap();
+        assert_eq!(rb, 1);
+        assert_eq!(conf, 8500);
+        assert_eq!(commitment, BytesN::from_array(&env, &[7u8; 32]));
+        assert_eq!(mh, BytesN::from_array(&env, &[0xABu8; 32]));
+        assert!(parse_journal(&env, &Bytes::from_slice(&env, &[0u8; 10])).is_none());
     }
 
     #[test]
