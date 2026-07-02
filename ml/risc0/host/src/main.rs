@@ -101,21 +101,12 @@ fn vk_blob() -> Vec<u8> {
     vk
 }
 
-// risc0 seal (256B, BE): a[ax|ay] | b[x.c0|x.c1|y.c0|y.c1] | c[cx|cy].
-// Re-encode to groth16.rs convention: swap G2 halves to c1||c0.
+// risc0's receipt seal is already in the groth16.rs convention — G1 = x|y and
+// G2 = x.c1|x.c0|y.c1|y.c0 (EIP-197 order, same as our verifier and VK). So we
+// only strip any 4-byte selector prefix and pass the 256 bytes through.
+// (Verified: an earlier c0<->c1 swap put proof_b off-curve for Soroban's reader.)
 fn reencode_seal(raw: &[u8]) -> Vec<u8> {
-    let s = &raw[raw.len() - 256..]; // strip any leading selector
-    let e = |i: usize| &s[i * 32..i * 32 + 32];
-    let mut out = Vec::with_capacity(256);
-    out.extend_from_slice(e(0)); // a.x
-    out.extend_from_slice(e(1)); // a.y
-    out.extend_from_slice(e(3)); // b.x.c1
-    out.extend_from_slice(e(2)); // b.x.c0
-    out.extend_from_slice(e(5)); // b.y.c1
-    out.extend_from_slice(e(4)); // b.y.c0
-    out.extend_from_slice(e(6)); // c.x
-    out.extend_from_slice(e(7)); // c.y
-    out
+    raw[raw.len() - 256..].to_vec()
 }
 
 fn main() {

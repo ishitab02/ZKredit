@@ -74,13 +74,19 @@ The feature vector is a private guest input; only outputs + binding fields are p
   verify on Soroban. Record proving time/memory + compression infra (Bonsai vs local GPU).
 - **Gate A:** a real RISC Zero receipt verifies on Soroban testnet.
 
-**A1 status (2026-07-02):** claim-digest port verified against `risc0-zkvm` ground truth;
-`split_digest`/pairing engine tested; RISC Zero 3.0.5 VK extracted + wired
-(`risc0_vectors/vk.bin`); guest+host built. **Blocked on the final live-fire test:** the
-Groth16 STARK→SNARK prover OOMs on this 15 GB box (needs a ≥32 GB machine or Bonsai). To
-close: run `ml/risc0/host` there, commit `seal.bin`/`journal.bin`, add the positive
-`verify_receipt` end-to-end test. (Docker Desktop bind mounts also require
-`RISC0_WORK_DIR` under `$HOME`.)
+**Phase A — DONE (2026-07-02). ✅** A real RISC Zero 3.0.5 Groth16 receipt from the
+`ml/risc0` guest verifies on Soroban (`verify_real_receipt`, `--features risc0`), with
+tampered-journal / wrong-image-id rejected. `claim_digest` matches `risc0-zkvm` ground
+truth; VK + fixtures committed in `risc0_vectors/`.
+- **A1** (Soroban verifier): claim-digest reconstruction, `split_digest`, VK, and seal
+  decoding all correct; end-to-end verify green.
+- **A2** (minimal guest→prove→compress→verify loop): the fixture guest proves and
+  STARK→Groth16-compresses; the resulting receipt is what A1 verifies.
+- **Proving infra learned:** the Groth16 STARK→SNARK step runs in Docker, peaks ~8–16 GB,
+  and OOMs at low Docker-VM memory (it failed at 3 GB, succeeded at ~15 GB). Docker Desktop
+  also needs `RISC0_WORK_DIR` under `$HOME` for the bind mount. GPU (CUDA) accelerates the
+  STARK prove, not the Groth16 wrap, so it doesn't help this bottleneck. Key detail: the
+  receipt seal is already in EIP-197 `c1||c0` G2 order — pass it through, don't swap.
 
 **Phase B — distilled model in the guest:**
 - B1: distilled model as a **SmartCore** model runnable in a `no_std` guest; measure cycles.
