@@ -145,6 +145,7 @@ fn main() {
 
     fs::write(format!("{out}/seal.bin"), &seal).unwrap();
     fs::write(format!("{out}/journal.bin"), &journal).unwrap();
+    fs::write(format!("{out}/image_id.bin"), image_id.as_bytes()).unwrap();
 
     println!("journal      = {}", hex::encode(&journal));
     println!("image_id     = {}", hex::encode(image_id.as_bytes()));
