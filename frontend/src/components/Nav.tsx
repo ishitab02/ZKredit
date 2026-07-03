@@ -87,7 +87,7 @@ export default function Nav({
               <li key={l.href}>
                 <a
                   href={l.href}
-                  className="font-sans text-sm text-fog-muted transition-colors hover:text-fog"
+                  className="font-sans text-sm font-bold text-fog-muted transition-colors hover:text-fog"
                 >
                   {l.label}
                 </a>
