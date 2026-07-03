@@ -149,6 +149,102 @@ async def test_attest_and_read_back(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(read.expires_at, int)
 
 
+def _fake_result() -> AttestationResult:
+    return AttestationResult(
+        stellar_address=ADDRESS,
+        risk_bucket=RiskBucket.LOW,
+        confidence=0.91,
+        credit_score=710,
+        full_model_hash="aa" * 32,
+        distilled_model_hash="bb" * 32,
+        zk_verified=False,
+        proof=None,
+        proof_generated=False,
+        proof_hash="cc" * 32,
+        public_inputs=[],
+        anomaly=False,
+        anomaly_score=0.1,
+        top_features=[TopFeature(name="tx_payment_count", value=5.0, contribution=0.3)],
+        reason_codes=[],
+        feature_schema_version="0.1.0-provisional",
+        created_at=datetime.now(UTC),
+    )
+
+
+@pytest.mark.asyncio
+async def test_prepare_route_falls_back_to_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No toolchain -> no live receipt -> fixture co-sign, honestly labeled."""
+
+    async def _fake_attest(address: str, **kwargs: object) -> AttestationResult:
+        return _fake_result()
+
+    async def _fake_load(address: str, sf: object, rt: object | None = None) -> None:
+        return None
+
+    captured: dict[str, object] = {}
+
+    def _fake_prepare(params: object, *, seal: object = None, journal: object = None) -> object:
+        captured["seal"] = seal
+        captured["journal"] = journal
+        return v1.PreparedSubmissionResult(
+            partial_xdr="AAAA",
+            attestor="G" + "C" * 55,
+            issued_at=1,
+            expires_at=2,
+            submission_mode="demo_fixture_cosign",
+            submission_detail="fixture",
+        )
+
+    monkeypatch.setattr(v1, "attest", _fake_attest)
+    monkeypatch.setattr(v1, "load_wallet_data", _fake_load)
+    monkeypatch.setattr(v1, "prepare_attestation_submission", _fake_prepare)
+
+    body = await v1.prepare_attestation(ADDRESS, object(), load_artifacts("model_store"))
+    assert body.partial_xdr == "AAAA"
+    assert body.submission_mode == "demo_fixture_cosign"
+    assert body.risk_bucket == 1
+    assert body.credit_score == 710
+    # Toolchain absent: no per-wallet seal/journal was passed to the builder.
+    assert captured["seal"] is None
+    assert captured["journal"] is None
+
+
+@pytest.mark.asyncio
+async def test_prepare_route_uses_live_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When a live receipt is produced, its seal/journal flow into the co-sign XDR."""
+    from ml.risc0.prover import Risc0Proof
+
+    async def _fake_attest(address: str, **kwargs: object) -> AttestationResult:
+        return _fake_result()
+
+    async def _fake_load(address: str, sf: object, rt: object | None = None) -> None:
+        return None
+
+    def _fake_prove(vector: object, address: str, **kwargs: object) -> Risc0Proof:
+        return Risc0Proof(seal=b"\x01" * 256, journal=b"\x02" * 72, image_id=b"\x03" * 32)
+
+    def _fake_prepare(params: object, *, seal: object = None, journal: object = None) -> object:
+        assert seal == b"\x01" * 256
+        assert journal == b"\x02" * 72
+        return v1.PreparedSubmissionResult(
+            partial_xdr="BBBB",
+            attestor="G" + "C" * 55,
+            issued_at=1,
+            expires_at=2,
+            submission_mode="live_cosign",
+            submission_detail="live",
+        )
+
+    monkeypatch.setattr(v1, "attest", _fake_attest)
+    monkeypatch.setattr(v1, "load_wallet_data", _fake_load)
+    monkeypatch.setattr(v1, "prove_wallet", _fake_prove)
+    monkeypatch.setattr(v1, "prepare_attestation_submission", _fake_prepare)
+
+    body = await v1.prepare_attestation(ADDRESS, object(), load_artifacts("model_store"))
+    assert body.partial_xdr == "BBBB"
+    assert body.submission_mode == "live_cosign"
+
+
 def test_stellar_address_validation_pattern() -> None:
     assert re.fullmatch(STELLAR_ADDRESS_PATTERN, ADDRESS)
     assert not re.fullmatch(STELLAR_ADDRESS_PATTERN, "not-a-stellar-address")

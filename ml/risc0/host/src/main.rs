@@ -114,8 +114,12 @@ fn reencode_seal(raw: &[u8]) -> Vec<u8> {
 fn main() {
     // Write the VK vector first — it is deterministic (no proving needed), so it is
     // produced even if the Groth16 prover is unavailable (e.g. OOM on a small box).
-    let out = "../../../contracts/shared/src/risc0_vectors";
-    fs::create_dir_all(out).unwrap();
+    // Default writes the committed test vectors (fixture regeneration, run from
+    // the host crate dir). The Python per-wallet prover driver overrides this with
+    // ZKREDIT_OUT_DIR so each attestation's seal/journal lands in its own temp dir.
+    let out = std::env::var("ZKREDIT_OUT_DIR")
+        .unwrap_or_else(|_| "../../../contracts/shared/src/risc0_vectors".to_string());
+    fs::create_dir_all(&out).unwrap();
     fs::write(format!("{out}/vk.bin"), vk_blob()).unwrap();
     println!("vk.bin written ({} bytes)", vk_blob().len());
 

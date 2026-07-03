@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.contract_stub import AttestationParams, read_attestation, submit_attestation
+from api.contract_stub import (
+    AttestationParams,
+    PreparedSubmissionResult,
+    prepare_attestation_submission,
+    read_attestation,
+    submit_attestation,
+)
 from api.deps import get_artifacts, get_session_factory
 from api.schemas import (
+    AttestationPrepareResponse,
     AttestationRecordResponse,
     AttestationResponse,
     FeatureSummaryResponse,
@@ -19,10 +28,15 @@ from api.schemas import (
 )
 from api.validation import StellarAddressPath
 from ml.attest import attest
+from ml.features.base import WalletData
 from ml.features.population_v1 import POPULATION_FEATURE_NAMES, extract_population_features
 from ml.features.store import SCHEMA_VERSION, load_wallet_data
 from ml.models.registry import ModelArtifacts
+from ml.models.risc0_export import build_selected_vector_from_raw
+from ml.risc0.prover import Risc0ProverUnavailableError, prove_wallet
 from ml.types import AttestationResult, RiskBucket
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["attestation"])
 
@@ -38,15 +52,7 @@ async def attest_wallet(
 ) -> AttestationResponse:
     """Run the full attest pipeline and submit via the contract adapter seam."""
     result = await attest(stellar_address, session_factory=session_factory, artifacts=artifacts)
-    params = AttestationParams(
-        stellar_address=result.stellar_address,
-        risk_bucket=int(result.risk_bucket),
-        confidence_bps=int(round(result.confidence * 10000)),
-        full_model_hash=result.full_model_hash,
-        distilled_model_hash=result.distilled_model_hash,
-        proof_hash=result.proof_hash,
-        zk_verified=result.zk_verified,
-    )
+    params = _to_params(result)
     try:
         submission = submit_attestation(params)
     except ValueError as err:
@@ -57,6 +63,58 @@ async def attest_wallet(
             detail="Attestation was scored, but submission through the contract adapter failed.",
         ) from err
     return _to_attestation_response(result, submission.tx_hash)
+
+
+@router.post("/attest/{stellar_address}/prepare", response_model=AttestationPrepareResponse)
+async def prepare_attestation(
+    stellar_address: StellarAddressPath,
+    session_factory: SessionFactoryDep,
+    artifacts: ArtifactsDep,
+) -> AttestationPrepareResponse:
+    """Score the wallet and return a browser-signable co-sign transaction.
+
+    The attestor server signs its own Soroban auth entry here; the wallet finishes
+    signing the envelope in Freighter (see ``submitCosignedAttestation``). When the
+    RISC Zero prover toolchain is available the anchored seal/journal is a live
+    per-wallet receipt; otherwise it honestly falls back to the committed fixture.
+    """
+    result = await attest(stellar_address, session_factory=session_factory, artifacts=artifacts)
+    params = _to_params(result)
+    seal, journal = await _try_live_receipt(stellar_address, session_factory, artifacts)
+    try:
+        prepared = prepare_attestation_submission(params, seal=seal, journal=journal)
+    except ValueError as err:
+        raise HTTPException(status_code=503, detail=str(err)) from err
+    except Exception as err:
+        raise HTTPException(
+            status_code=502,
+            detail="Attestation was scored, but building the co-sign transaction failed.",
+        ) from err
+    return _to_prepare_response(result, prepared)
+
+
+async def _try_live_receipt(
+    stellar_address: str,
+    session_factory: async_sessionmaker[AsyncSession],
+    artifacts: ModelArtifacts,
+) -> tuple[bytes | None, bytes | None]:
+    """Best-effort live per-wallet RISC Zero receipt; ``(None, None)`` to fall back.
+
+    Returns immediately when the prover toolchain is absent (the default here), so
+    the co-sign path degrades to the committed fixture instead of failing.
+    """
+    wallet = await load_wallet_data(stellar_address, session_factory)
+    wallet = wallet or WalletData(address=stellar_address, account={}, operations=[])
+    features = extract_population_features(wallet)
+    selected = build_selected_vector_from_raw(artifacts, features.values)
+    try:
+        proof = await asyncio.to_thread(prove_wallet, selected, stellar_address)
+    except Risc0ProverUnavailableError:
+        return None, None
+    except Exception:  # proving attempted but failed: fall back, do not 500.
+        logger.warning("live RISC Zero proving failed; using fixture", exc_info=True)
+        return None, None
+    return proof.seal, proof.journal
 
 
 @router.get("/attestation/{stellar_address}", response_model=AttestationRecordResponse)
@@ -120,6 +178,31 @@ async def model_info(artifacts: ArtifactsDep) -> ModelInfoResponse:
         # Honest: on-chain ZK verification is not wired yet (DG1 + Halo2/Groth16).
         zk_verified_capability=False,
         proving_system="halo2-kzg-bn254 (EZKL); NOT groth16",
+    )
+
+
+def _to_params(result: AttestationResult) -> AttestationParams:
+    """Project the scored result onto the contract-adapter params (bps boundary)."""
+    return AttestationParams(
+        stellar_address=result.stellar_address,
+        risk_bucket=int(result.risk_bucket),
+        confidence_bps=int(round(result.confidence * 10000)),
+        full_model_hash=result.full_model_hash,
+        distilled_model_hash=result.distilled_model_hash,
+        proof_hash=result.proof_hash,
+        zk_verified=result.zk_verified,
+    )
+
+
+def _to_prepare_response(
+    result: AttestationResult, prepared: PreparedSubmissionResult
+) -> AttestationPrepareResponse:
+    base = _to_attestation_response(result, tx_hash=None)
+    return AttestationPrepareResponse(
+        **base.model_dump(),
+        partial_xdr=prepared.partial_xdr,
+        submission_mode=prepared.submission_mode,
+        submission_detail=prepared.submission_detail,
     )
 
 
