@@ -56,6 +56,20 @@ class AttestationResponse(BaseModel):
     created_at: datetime
 
 
+class AttestationPrepareResponse(AttestationResponse):
+    """Attestation result plus a browser-ready co-sign transaction."""
+
+    partial_xdr: str = Field(
+        description="Base64 Soroban transaction XDR that the wallet can finish signing.",
+    )
+    submission_mode: str = Field(
+        description="How this partial transaction was prepared, e.g. demo_fixture_cosign.",
+    )
+    submission_detail: str = Field(
+        description="Human-readable explanation of the preparation path.",
+    )
+
+
 class AttestationRecordResponse(BaseModel):
     """A stored on-chain attestation (read path)."""
 
