@@ -1,4 +1,5 @@
 import TryAttestation from "../components/TryAttestation";
+import OnChainAttest from "../components/OnChainAttest";
 
 export default function AttestationPage({
   walletAddress,
@@ -31,6 +32,8 @@ export default function AttestationPage({
         </div>
 
         <TryAttestation walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
+
+        <OnChainAttest walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
       </div>
     </section>
   );
