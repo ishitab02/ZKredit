@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "./Icons";
 import { EASE } from "../lib/motion";
+import { ATTESTATION_PATH } from "../lib/navigation";
 
 const ParticleSphere = lazy(() => import("../three/ParticleSphere"));
 
@@ -59,7 +60,7 @@ export default function Hero() {
           transition={{ duration: 0.8, ease: EASE, delay: 0.25 }}
           className="pointer-events-auto mt-10 flex flex-col items-center gap-4 sm:flex-row"
         >
-          <a href="#cta" className="btn-primary">
+          <a href={ATTESTATION_PATH} className="btn-primary">
             Request attestation
             <ArrowUpRight className="h-4 w-4" />
           </a>

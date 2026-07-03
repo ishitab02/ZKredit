@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import Placeholder from "./Placeholder";
 import { ArrowUpRight } from "./Icons";
 import { fadeUp, inView, stagger } from "../lib/motion";
+import { ATTESTATION_PATH } from "../lib/navigation";
 
 const CASES = [
   {
@@ -44,7 +45,7 @@ export default function UseCases() {
               One proof. Many places to spend it.
             </motion.h2>
           </div>
-          <motion.a variants={fadeUp} href="#cta" className="btn-ghost self-start md:self-auto">
+          <motion.a variants={fadeUp} href={ATTESTATION_PATH} className="btn-ghost self-start md:self-auto">
             Talk to us
             <ArrowUpRight className="h-4 w-4" />
           </motion.a>

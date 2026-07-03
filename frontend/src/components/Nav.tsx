@@ -2,17 +2,25 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpRight, Close, Menu } from "./Icons";
 import { EASE } from "../lib/motion";
+import { ATTESTATION_PATH, LANDING_PATH, type SiteRoute } from "../lib/navigation";
 
-const LINKS = [
+const LANDING_LINKS = [
   { label: "What we do", href: "#about" },
   { label: "How it works", href: "#how" },
   { label: "What's proven", href: "#proven" },
   { label: "Use cases", href: "#use-cases" },
 ];
 
-export default function Nav() {
+export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const links =
+    route === "landing"
+      ? LANDING_LINKS
+      : [
+          { label: "Back to landing", href: LANDING_PATH },
+          { label: "Start attestation", href: `${ATTESTATION_PATH}#attestation` },
+        ];
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -37,7 +45,7 @@ export default function Nav() {
           }`}
         >
           <a
-            href="#top"
+            href={LANDING_PATH}
             className="flex items-center gap-2.5 text-fog transition-colors hover:text-teal-bright"
             aria-label="ZKredit — home"
           >
@@ -54,7 +62,8 @@ export default function Nav() {
           </a>
 
           <ul className="hidden items-center gap-8 md:flex">
-            {LINKS.map((l) => (
+            {route === "landing" &&
+              links.map((l) => (
               <li key={l.href}>
                 <a
                   href={l.href}
@@ -67,8 +76,8 @@ export default function Nav() {
           </ul>
 
           <div className="hidden md:block">
-            <a href="#cta" className="btn-primary !py-2.5 text-xs">
-              Request attestation
+            <a href={route === "landing" ? ATTESTATION_PATH : LANDING_PATH} className="btn-primary !py-2.5 text-xs">
+              {route === "landing" ? "Request attestation" : "Back to landing"}
               <ArrowUpRight className="h-4 w-4" />
             </a>
           </div>
@@ -94,7 +103,7 @@ export default function Nav() {
               className="glass mt-2 overflow-hidden rounded-2xl md:hidden"
             >
               <ul className="flex flex-col p-4">
-                {LINKS.map((l) => (
+                {links.map((l) => (
                   <li key={l.href}>
                     <a
                       href={l.href}
@@ -107,11 +116,11 @@ export default function Nav() {
                 ))}
                 <li className="pt-3">
                   <a
-                    href="#cta"
+                    href={route === "landing" ? ATTESTATION_PATH : LANDING_PATH}
                     onClick={() => setOpen(false)}
                     className="btn-primary w-full justify-center"
                   >
-                    Request attestation
+                    {route === "landing" ? "Request attestation" : "Back to landing"}
                     <ArrowUpRight className="h-4 w-4" />
                   </a>
                 </li>

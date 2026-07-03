@@ -1,15 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import PageGlow from "./components/PageGlow";
 import Nav from "./components/Nav";
-import Hero from "./components/Hero";
-import Catchphrase from "./components/Catchphrase";
-import WhatWeDo from "./components/WhatWeDo";
-import HowItWorks from "./components/HowItWorks";
-import WhatsProven from "./components/WhatsProven";
-import UseCases from "./components/UseCases";
 import Footer from "./components/Footer";
+import LandingPage from "./pages/LandingPage";
+import AttestationPage from "./pages/AttestationPage";
+import { getSiteRoute } from "./lib/navigation";
 
 export default function App() {
+  const [route, setRoute] = useState(() => getSiteRoute());
+
   // Pink fill on primary buttons follows the pointer (--mx/--my).
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
@@ -24,6 +23,18 @@ export default function App() {
     return () => document.removeEventListener("pointermove", onMove);
   }, []);
 
+  useEffect(() => {
+    const onPop = () => setRoute(getSiteRoute());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [route]);
+
+  const isAttestation = route === "attestation";
+
   return (
     <>
       <a
@@ -33,16 +44,11 @@ export default function App() {
         Skip to content
       </a>
       <PageGlow />
-      <Nav />
+      <Nav route={route} />
       <main id="main">
-        <Hero />
-        <Catchphrase />
-        <WhatWeDo />
-        <HowItWorks />
-        <WhatsProven />
-        <UseCases />
+        {isAttestation ? <AttestationPage /> : <LandingPage />}
       </main>
-      <Footer />
+      <Footer route={route} />
     </>
   );
 }

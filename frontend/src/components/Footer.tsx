@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "./Icons";
 import { fadeUp, inView, stagger } from "../lib/motion";
+import { ATTESTATION_PATH, LANDING_PATH, type SiteRoute } from "../lib/navigation";
 
-const COLS = [
+const LANDING_COLS = [
   {
     heading: "Product",
     links: [
@@ -19,19 +20,46 @@ const COLS = [
       { label: "Roadmap", href: "#about" },
     ],
   },
-  {
-    heading: "Company",
-    links: [
-      { label: "About", href: "#about" },
-      { label: "Contact", href: "#cta" },
-    ],
-  },
+    {
+      heading: "Company",
+      links: [
+        { label: "About", href: "#about" },
+        { label: "Contact", href: ATTESTATION_PATH },
+      ],
+    },
 ];
 
-export default function Footer() {
+export default function Footer({ route = "landing" }: { route?: SiteRoute }) {
+  const cols =
+    route === "landing"
+      ? LANDING_COLS
+      : [
+          {
+            heading: "Product",
+            links: [
+              { label: "Back to landing", href: LANDING_PATH },
+              { label: "Start attestation", href: `${ATTESTATION_PATH}#attestation` },
+            ],
+          },
+          {
+            heading: "Network",
+            links: [
+              { label: "Stellar / Soroban", href: LANDING_PATH },
+              { label: "Proof status", href: `${ATTESTATION_PATH}#attestation` },
+            ],
+          },
+          {
+            heading: "Company",
+            links: [
+              { label: "About", href: LANDING_PATH },
+              { label: "Contact", href: `${ATTESTATION_PATH}#attestation` },
+            ],
+          },
+        ];
+
   return (
     <footer className="relative overflow-hidden">
-      <section id="cta" className="relative py-28 md:py-40">
+      <section id="contact" className="relative py-28 md:py-40">
         <div className="glow left-1/2 top-1/2 h-[54vmin] w-[80vmin] -translate-x-1/2 -translate-y-1/2 animate-pulseglow" />
         <div className="absolute inset-0 bg-dotgrid opacity-30" />
         <motion.div
@@ -56,12 +84,12 @@ export default function Footer() {
             your lending protocol.
           </motion.p>
           <motion.div variants={fadeUp} className="mt-10 flex flex-col items-center gap-4 sm:flex-row">
-            <a href="mailto:hello@zkredit.xyz" className="btn-primary">
-              Request attestation
+            <a href={route === "landing" ? ATTESTATION_PATH : LANDING_PATH} className="btn-primary">
+              {route === "landing" ? "Request attestation" : "Back to landing"}
               <ArrowUpRight className="h-4 w-4" />
             </a>
-            <a href="#how" className="btn-ghost">
-              Read the docs
+            <a href={route === "landing" ? "#how" : LANDING_PATH} className="btn-ghost">
+              {route === "landing" ? "Read the docs" : "Read the landing page"}
             </a>
           </motion.div>
         </motion.div>
@@ -70,7 +98,11 @@ export default function Footer() {
       <div className="hairline">
         <div className="container-page grid gap-12 py-16 md:grid-cols-[1.4fr_repeat(3,1fr)]">
           <div>
-            <a href="#top" className="flex items-center gap-2.5 text-fog" aria-label="ZKredit — home">
+            <a
+              href={route === "landing" ? "#top" : LANDING_PATH}
+              className="flex items-center gap-2.5 text-fog"
+              aria-label="ZKredit — home"
+            >
               <img src="/logo.png" alt="" className="h-8 w-8 object-contain" width={32} height={32} />
               <span className="font-display text-lg font-semibold tracking-tight">ZKredit</span>
             </a>
@@ -80,7 +112,7 @@ export default function Footer() {
             </p>
           </div>
 
-          {COLS.map((col) => (
+          {cols.map((col) => (
             <nav key={col.heading} aria-label={col.heading}>
               <h3 className="mb-4 font-mono text-xs uppercase tracking-[0.2em] text-fog-faint">
                 {col.heading}
