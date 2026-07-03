@@ -57,14 +57,7 @@
 
   .text-gradient-teal {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(
-      115deg,
-      #7febd9 0%,
-      #cbfffc 22%,
-      #edfffe 50%,
-      #fde9ff 78%,
-      #fad1ff 100%
-    );
+    background-image: linear-gradient(115deg, #ef8dff 0%, #f7b8ff 24%, #e6fffb 52%, #5fe9d6 100%);
   }
 
   /* Rounded CTAs with an orbiting-light border. */

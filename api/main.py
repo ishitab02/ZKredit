@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -42,6 +43,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(v1_router)
+
+# Demo-permissive: the dashboard is a public-read attestation lookup, no
+# cookies/auth involved, and the frontend origin isn't fixed yet (localhost
+# in dev, a Vercel URL in prod). Tighten to an explicit allowlist once the
+# frontend has a stable deployed origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 
 class HealthResponse(BaseModel):

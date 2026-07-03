@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "./Icons";
+import ErrorBoundary from "./ErrorBoundary";
 import { EASE } from "../lib/motion";
 import { ATTESTATION_PATH } from "../lib/navigation";
 
@@ -17,9 +18,11 @@ export default function Hero() {
 
       {/* Interactive particle sphere, anchored low. */}
       <div className="absolute inset-x-0 bottom-0 flex justify-center">
-        <Suspense fallback={null}>
-          <ParticleSphere className="h-[84vw] w-[84vw] max-h-[720px] max-w-[720px] cursor-grab active:cursor-grabbing" />
-        </Suspense>
+        <ErrorBoundary fallback={null}>
+          <Suspense fallback={null}>
+            <ParticleSphere className="h-[84vw] w-[84vw] max-h-[720px] max-w-[720px] cursor-grab active:cursor-grabbing" />
+          </Suspense>
+        </ErrorBoundary>
       </div>
 
       <div className="container-page relative z-10 flex flex-col items-center text-center pointer-events-none">
