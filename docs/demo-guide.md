@@ -21,7 +21,7 @@ python3 infra/attestor_service.py            # http://127.0.0.1:8790
 cd frontend && npm install && npm run dev     # http://localhost:5173
 ```
 
-Open `http://localhost:5173/#attestation`, scroll to **"On-chain attestation
+Open `http://localhost:5173/attestation`, scroll to **"On-chain attestation
 (live testnet)"**, and follow §2. Verified live end-to-end just before writing
 this: fresh wallet → attest → sign → `zk_verified=true` on-chain → loan executed
 (txs in §3).
@@ -68,7 +68,7 @@ cd frontend && npm install && npm run dev
 #   -> http://localhost:5173/
 ```
 
-Open `http://localhost:5173/#attestation` (the Attestation page).
+Open `http://localhost:5173/attestation` (the Attestation page).
 
 ---
 
