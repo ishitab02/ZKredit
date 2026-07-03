@@ -1,5 +1,11 @@
-import TryAttestation from "../components/TryAttestation";
 import OnChainAttest from "../components/OnChainAttest";
+// The API-backed scoring form (TryAttestation) needs the FastAPI + ML backend
+// running on :8000 (see scripts/run_api_local.sh). It is disabled by default so
+// the page works with just the attestor service + Freighter. Re-enable by
+// setting VITE_ENABLE_API_SCORING=true once the backend is up.
+import TryAttestation from "../components/TryAttestation";
+
+const API_SCORING = import.meta.env.VITE_ENABLE_API_SCORING === "true";
 
 export default function AttestationPage({
   walletAddress,
@@ -22,18 +28,21 @@ export default function AttestationPage({
             Attestation
           </p>
           <h1 className="font-display text-display-md font-semibold leading-[0.95] text-fog">
-            Request a wallet attestation
+            Prove your wallet on-chain
           </h1>
           <p className="mt-5 text-base leading-relaxed text-fog-muted md:text-lg">
-            Connect Freighter or paste a Stellar G-address to run the full
-            scoring flow: ingestion, scoring, proof generation, and on-chain
-            attestation
+            Connect Freighter and produce a real, ZK-verified risk attestation:
+            the attestor co-signs, your wallet signs, and the Soroban contract
+            verifies the Groth16 receipt on-chain — your raw history never leaves
+            your side.
           </p>
         </div>
 
-        <TryAttestation walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
-
         <OnChainAttest walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
+
+        {API_SCORING && (
+          <TryAttestation walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
+        )}
       </div>
     </section>
   );
