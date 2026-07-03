@@ -8,15 +8,15 @@ const CYAN = "#22E3FF";
 const PURPLE = "#C4B5FD";
 
 const PROVEN = [
-  "A zero-knowledge proof, generated off-chain.",
-  "Nothing about the wallet is revealed.",
-  "Verify it yourself. No trust required.",
+  "A zero-knowledge proof, generated off-chain",
+  "Nothing about the wallet is revealed",
+  "Verify it yourself. No trust required",
 ];
 
 const ANCHORED = [
-  "The full model and its hashes go on-chain.",
-  "The credit score stays off-chain.",
-  "On-chain proof verification is on the roadmap.",
+  "The full model and its hashes go on-chain",
+  "The credit score stays off-chain",
+  "On-chain proof verification is on the roadmap",
 ];
 
 export default function WhatsProven() {
@@ -40,14 +40,13 @@ export default function WhatsProven() {
             variants={fadeUp}
             className="font-display text-4xl font-semibold leading-[1.05] text-fog md:text-6xl"
           >
-            We tell you exactly what the proof covers.
+            We tell you exactly what the proof covers
           </motion.h2>
           <motion.p
             variants={fadeUp}
             className="mx-auto mt-7 max-w-xl text-base leading-relaxed text-fog-muted md:text-lg"
           >
-            Transparency is our foundation. Hover a card to light it up and see
-            exactly what we prove vs what we anchor.
+            Transparency is our foundation
           </motion.p>
         </motion.div>
 

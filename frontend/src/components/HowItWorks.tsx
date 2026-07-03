@@ -26,7 +26,7 @@ const STEPS: Step[] = [
     n: "01",
     title: "Read a wallet",
     blurb:
-      "We read a wallet's public Stellar history straight from the ledger: how active it is, its payment mix, trustlines, counterparties, and how old and recent it is. Nothing private, nothing off-chain.",
+      "We read a wallet's public Stellar history straight from the ledger: how active it is, its payment mix, trustlines, counterparties, and how old and recent it is. Nothing private, nothing off-chain",
     cta: "Check a wallet's history",
     accent: "#5E9BFF",
   },
@@ -34,7 +34,7 @@ const STEPS: Step[] = [
     n: "02",
     title: "Score behaviour",
     blurb:
-      "An unsupervised model ranks the wallet against thousands of others and returns a risk bucket plus a FICO-style score. It reads real behaviour, so it never feels like a black box.",
+      "An unsupervised model ranks the wallet against thousands of others and returns a risk bucket plus a FICO-style score. It reads real behaviour, so it never feels like a black box",
     cta: "Score a wallet's risk",
     accent: "#A17BFF",
   },
@@ -42,7 +42,7 @@ const STEPS: Step[] = [
     n: "03",
     title: "Prove in zero-knowledge",
     blurb:
-      "A distilled model runs inside a zero-knowledge circuit and proves the score is correct, without ever exposing the wallet's features or its transactions.",
+      "A distilled model runs inside a zero-knowledge circuit and proves the score is correct, without ever exposing the wallet's features or its transactions",
     cta: "Prove a score privately",
     accent: "#E86AF0",
   },
@@ -50,7 +50,7 @@ const STEPS: Step[] = [
     n: "04",
     title: "Attest on-chain",
     blurb:
-      "We anchor the risk bucket, confidence and model hashes on Soroban, so any lender gets a portable, tamper-proof attestation they can verify themselves.",
+      "We anchor the risk bucket, confidence and model hashes on Soroban, so any lender gets a portable, tamper-proof attestation they can verify themselves",
     cta: "Attest a wallet on-chain",
     accent: "#FF7BC0",
   },
@@ -109,23 +109,25 @@ function IntroPanel() {
           <span className="text-fog">IT WORKS</span>
         </h2>
         <p className="mt-16 max-w-md text-lg leading-relaxed text-fog-muted">
-          From a raw ledger to a proof a lender can trust, in four steps.
+          From a raw ledger to a proof a lender can trust, in four steps
         </p>
       </div>
     </div>
   );
 }
 
-/* Concentric circles centred on the left edge (mid-height), contained so the
-   tapering fan always reads complete. Static, thick, lighter pink, glowing. */
+/* Concentric circles centred just right of the left edge (mid-height), so the
+   fan tapers to a point at the edge itself (ref: reference/1.png) instead of
+   cutting off at full width. Static, thick, lighter pink, glowing. */
 function Rings() {
   const CY = "52%";
+  const CX = "9vw";
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="ring-breathe absolute left-0" style={{ top: CY }}>
+      <div className="ring-breathe absolute" style={{ top: CY, left: CX }}>
         {Array.from({ length: 15 }).map((_, i) => {
           const d = (i + 1) * 5.2;
-          const op = Math.max(0.16, 0.55 - i * 0.026);
+          const op = Math.max(0.24, 0.68 - i * 0.03);
           return (
             <div
               key={i}
@@ -135,7 +137,7 @@ function Rings() {
                 height: `${d}vh`,
                 transform: "translate(-50%, -50%)",
                 border: `2.5px solid rgba(${RING_RGB},${op})`,
-                boxShadow: `0 0 12px rgba(${RING_RGB},${op * 0.4})`,
+                boxShadow: `0 0 26px rgba(${RING_RGB},${op * 0.85}), 0 0 8px rgba(${RING_RGB},${Math.min(1, op * 1.2)})`,
               }}
             />
           );
@@ -149,7 +151,13 @@ function Rings() {
         <span
           key={v}
           className="absolute h-2 w-2 rounded-full"
-          style={{ left: `${v}vw`, top: CY, transform: "translate(-50%, -50%)", background: RING }}
+          style={{
+            left: `${v}vw`,
+            top: CY,
+            transform: "translate(-50%, -50%)",
+            background: RING,
+            boxShadow: `0 0 10px ${RING}`,
+          }}
         />
       ))}
     </div>

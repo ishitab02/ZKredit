@@ -12,14 +12,15 @@ export default function Catchphrase() {
     offset: ["start end", "end start"],
   });
 
-  // "Private Credit," from bottom-right → centre → top-left.
-  // "Publicly Proven" from bottom-left  → centre → top-right.
-  // Settles centred around mid-scroll (when the section is centred on screen).
+  // "Private Credit," from bottom-right corner → centre → top-left corner.
+  // "Publicly Proven" from bottom-left corner  → centre → top-right corner.
+  // vmax on both axes keeps the path a true diagonal (equal x/y magnitude)
+  // regardless of viewport aspect ratio, instead of reading as a side-entry.
   const stops = [0, 0.4, 0.6, 1];
-  const l1x = useTransform(scrollYProgress, stops, ["46vw", "0vw", "0vw", "-46vw"]);
-  const l1y = useTransform(scrollYProgress, stops, ["40vh", "0vh", "0vh", "-46vh"]);
-  const l2x = useTransform(scrollYProgress, stops, ["-46vw", "0vw", "0vw", "46vw"]);
-  const l2y = useTransform(scrollYProgress, stops, ["44vh", "0vh", "0vh", "-46vh"]);
+  const l1x = useTransform(scrollYProgress, stops, ["62vmax", "0vw", "0vw", "-62vmax"]);
+  const l1y = useTransform(scrollYProgress, stops, ["62vmax", "0vh", "0vh", "-62vmax"]);
+  const l2x = useTransform(scrollYProgress, stops, ["-62vmax", "0vw", "0vw", "62vmax"]);
+  const l2y = useTransform(scrollYProgress, stops, ["62vmax", "0vh", "0vh", "-62vmax"]);
   const opacity = useTransform(scrollYProgress, [0, 0.1, 0.85, 1], [0, 1, 1, 0.4]);
   const glowX = useTransform(scrollYProgress, [0, 1], ["18%", "72%"]);
 

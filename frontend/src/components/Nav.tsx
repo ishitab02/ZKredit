@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUpRight, Close, Menu } from "./Icons";
+import { Close, Menu } from "./Icons";
 import { EASE } from "../lib/motion";
 import { ATTESTATION_PATH, LANDING_PATH, type SiteRoute } from "../lib/navigation";
+import { connectFreighter } from "../lib/freighter";
 
 const LANDING_LINKS = [
   { label: "What we do", href: "#about" },
@@ -11,16 +12,35 @@ const LANDING_LINKS = [
   { label: "Use cases", href: "#use-cases" },
 ];
 
-export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
+function shorten(address: string) {
+  return `${address.slice(0, 4)}…${address.slice(-4)}`;
+}
+
+export default function Nav({
+  route = "landing",
+  walletAddress = null,
+  onWalletConnected,
+}: {
+  route?: SiteRoute;
+  walletAddress?: string | null;
+  onWalletConnected?: (address: string) => void;
+}) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const links =
-    route === "landing"
-      ? LANDING_LINKS
-      : [
-          { label: "Back to landing", href: LANDING_PATH },
-          { label: "Start attestation", href: `${ATTESTATION_PATH}#attestation` },
-        ];
+  const [connecting, setConnecting] = useState(false);
+  const links = route === "landing" ? LANDING_LINKS : [{ label: "Start attestation", href: `${ATTESTATION_PATH}#attestation` }];
+
+  async function handleConnect() {
+    setConnecting(true);
+    try {
+      const address = await connectFreighter();
+      onWalletConnected?.(address);
+    } catch {
+      // Freighter unavailable or the user declined — leave the field to manual entry.
+    } finally {
+      setConnecting(false);
+    }
+  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -76,10 +96,20 @@ export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
           </ul>
 
           <div className="hidden md:block">
-            <a href={route === "landing" ? ATTESTATION_PATH : LANDING_PATH} className="btn-primary !py-2.5 text-xs">
-              {route === "landing" ? "Request attestation" : "Back to landing"}
-              <ArrowUpRight className="h-4 w-4" />
-            </a>
+            {route === "landing" ? (
+              <a href={ATTESTATION_PATH} className="btn-primary !py-2.5 text-xs">
+                Request attestation
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void handleConnect()}
+                disabled={connecting}
+                className="btn-primary !py-2.5 text-xs disabled:opacity-60"
+              >
+                {walletAddress ? shorten(walletAddress) : connecting ? "Connecting…" : "Connect Freighter"}
+              </button>
+            )}
           </div>
 
           <button
@@ -115,14 +145,27 @@ export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
                   </li>
                 ))}
                 <li className="pt-3">
-                  <a
-                    href={route === "landing" ? ATTESTATION_PATH : LANDING_PATH}
-                    onClick={() => setOpen(false)}
-                    className="btn-primary w-full justify-center"
-                  >
-                    {route === "landing" ? "Request attestation" : "Back to landing"}
-                    <ArrowUpRight className="h-4 w-4" />
-                  </a>
+                  {route === "landing" ? (
+                    <a
+                      href={ATTESTATION_PATH}
+                      onClick={() => setOpen(false)}
+                      className="btn-primary w-full justify-center"
+                    >
+                      Request attestation
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleConnect();
+                        setOpen(false);
+                      }}
+                      disabled={connecting}
+                      className="btn-primary w-full justify-center disabled:opacity-60"
+                    >
+                      {walletAddress ? shorten(walletAddress) : connecting ? "Connecting…" : "Connect Freighter"}
+                    </button>
+                  )}
                 </li>
               </ul>
             </motion.div>

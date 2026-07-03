@@ -39,37 +39,37 @@ const CAPABILITIES: Capability[] = [
   {
     word: "Score",
     blurb:
-      "Turn any wallet's real on-chain history into a 300 to 850 behavioural risk score, a credit read for crypto.",
+      "Turn any wallet's real on-chain history into a 300 to 850 behavioural risk score, a credit read for crypto",
     Icon: Pulse,
   },
   {
     word: "Prove",
     blurb:
-      "Generate a zero-knowledge proof that the score is honest, verifiable without revealing a single transaction.",
+      "Generate a zero-knowledge proof that the score is honest, verifiable without revealing a single transaction",
     Icon: ShieldCheck,
   },
   {
     word: "Attest",
     blurb:
-      "Anchor the result on Stellar as a portable, tamper-proof attestation any protocol can read.",
+      "Anchor the result on Stellar as a portable, tamper-proof attestation any protocol can read",
     Icon: Cube,
   },
   {
     word: "Lend",
     blurb:
-      "Let lenders price risk on behaviour, not just collateral. Lower APR and collateral for verified low-risk wallets.",
+      "Let lenders price risk on behaviour, not just collateral. Lower APR and collateral for verified low-risk wallets",
     Icon: Coins,
   },
   {
     word: "Explain",
     blurb:
-      "Every score ships with its top signals and reason codes. A transparent read of the wallet, never a black box.",
+      "Every score ships with its top signals and reason codes. A transparent read of the wallet, never a black box",
     Icon: Nodes,
   },
   {
     word: "Protect",
     blurb:
-      "Raw wallet data never touches the chain. Only the risk bucket, confidence, and model hashes go on-chain.",
+      "Raw wallet data never touches the chain. Only the risk bucket, confidence, and model hashes go on-chain",
     Icon: Lock,
   },
 ];

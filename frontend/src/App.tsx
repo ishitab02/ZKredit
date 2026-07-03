@@ -8,6 +8,7 @@ import { getSiteRoute } from "./lib/navigation";
 
 export default function App() {
   const [route, setRoute] = useState(() => getSiteRoute());
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
 
   // Pink fill on primary buttons follows the pointer (--mx/--my).
   useEffect(() => {
@@ -44,9 +45,13 @@ export default function App() {
         Skip to content
       </a>
       <PageGlow />
-      <Nav route={route} />
+      <Nav route={route} walletAddress={walletAddress} onWalletConnected={setWalletAddress} />
       <main id="main">
-        {isAttestation ? <AttestationPage /> : <LandingPage />}
+        {isAttestation ? (
+          <AttestationPage walletAddress={walletAddress} onWalletConnected={setWalletAddress} />
+        ) : (
+          <LandingPage />
+        )}
       </main>
       <Footer route={route} />
     </>

@@ -51,7 +51,7 @@ export default function Hero() {
           className="mt-7 max-w-xl text-base leading-relaxed text-fog-muted md:text-lg"
         >
           ZKredit turns a wallet's on-chain history into a risk attestation, and
-          proves it in zero-knowledge, without revealing a single transaction.
+          proves it in zero-knowledge, without revealing a single transaction
         </motion.p>
 
         <motion.div

@@ -12,7 +12,9 @@ import {
   type FeatureSummaryResponse,
   type ModelInfoResponse,
 } from "../lib/api";
-import { connectFreighter, getConnectedAddress } from "../lib/freighter";
+import { getConnectedAddress } from "../lib/freighter";
+
+const BUCKETS = ["VERY_LOW", "LOW", "MEDIUM", "HIGH", "VERY_HIGH"] as const;
 
 const RISK_COLORS: Record<string, string> = {
   VERY_LOW: "#22c55e",
@@ -45,7 +47,13 @@ const FEATURE_LABELS: [key: string, label: string][] = [
 
 type Phase = "idle" | "loading" | "done" | "error";
 
-export default function TryAttestation() {
+export default function TryAttestation({
+  walletAddress,
+  onWalletConnected,
+}: {
+  walletAddress?: string | null;
+  onWalletConnected?: (address: string) => void;
+}) {
   const [address, setAddress] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [step, setStep] = useState(0);
@@ -65,15 +73,26 @@ export default function TryAttestation() {
       .catch(() => setModelInfo(null));
   }, []);
 
+  // Freighter may already be approved for this origin from a prior session —
+  // pick it up silently without prompting, and let the nav button know too.
   useEffect(() => {
     getConnectedAddress()
       .then((connected) => {
-        if (connected) setAddress((current) => current || connected);
+        if (connected) {
+          setAddress((current) => current || connected);
+          onWalletConnected?.(connected);
+        }
       })
       .catch(() => {
         // Freighter is optional. Keep manual entry available.
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Connecting via the nav button fills this field even if it happens after mount.
+  useEffect(() => {
+    if (walletAddress) setAddress((current) => current || walletAddress);
+  }, [walletAddress]);
 
   useEffect(() => () => {
     if (stepTimer.current) clearInterval(stepTimer.current);
@@ -123,18 +142,6 @@ export default function TryAttestation() {
     }
   }
 
-  async function onConnectWallet() {
-    setPhase("idle");
-    setErrorMessage("");
-    try {
-      const connected = await connectFreighter();
-      setAddress(connected);
-    } catch (err) {
-      setPhase("error");
-      setErrorMessage(err instanceof Error ? err.message : "Could not connect Freighter.");
-    }
-  }
-
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const addr = address.trim();
@@ -147,75 +154,49 @@ export default function TryAttestation() {
   }
 
   return (
-    <section id="attestation" className="relative py-28 md:py-40">
-      <div className="glow left-1/2 top-1/2 h-[54vmin] w-[80vmin] -translate-x-1/2 -translate-y-1/2 animate-pulseglow" />
-      <div className="absolute inset-0 bg-dotgrid opacity-30" />
-
-      <div className="container-page relative z-10 flex flex-col items-center text-center">
-        <p className="eyebrow mb-4">
-          <span className="h-1.5 w-1.5 rounded-full accent-dot" />
-          Attestation
-        </p>
-        <h2 className="max-w-3xl font-display text-display-md font-semibold text-fog">
-          Give your wallet a <span className="text-gradient">credit identity</span> it can prove.
-        </h2>
-        <p className="mt-6 max-w-xl text-base leading-relaxed text-fog-muted">
-          Enter a Stellar address to run the full pipeline: ingestion, scoring,
-          proof generation, and attestation.
-        </p>
-
-        <form
-          onSubmit={onSubmit}
-          className="glass mt-10 flex w-full max-w-xl flex-col gap-3 rounded-2xl p-4 sm:flex-row"
-        >
+    <div id="attestation" className="mt-14 flex flex-col items-center">
+      <form onSubmit={onSubmit} className="flex w-full max-w-3xl items-center gap-2">
+        <div className="card-shine relative min-w-0 flex-1 rounded-xl">
           <input
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            placeholder="G... (Stellar public key)"
+            placeholder="G..."
             spellCheck={false}
-            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 font-mono text-sm text-fog outline-none placeholder:text-fog-faint focus:border-teal-bright/60"
+            className="relative z-10 h-11 w-full min-w-0 rounded-xl border border-white/10 bg-ink-900/60 px-4 font-mono text-sm text-fog outline-none placeholder:text-fog-faint"
           />
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => void onConnectWallet()}
-              className="btn-ghost justify-center whitespace-nowrap !px-5 !py-3"
-            >
-              Connect Freighter
-            </button>
-            <button
-              type="submit"
-              disabled={phase === "loading"}
-              className="btn-primary justify-center whitespace-nowrap disabled:opacity-50"
-            >
-              {phase === "loading" ? "Working…" : "Request attestation"}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-10 w-full max-w-3xl text-left">
-          {phase === "loading" && <LoadingSteps step={step} />}
-          {phase === "error" && (
-            <ErrorPanel message={errorMessage} onRetry={() => void runAttestation(address.trim())} />
-          )}
-          {phase === "done" && attestation && (
-            <Results
-              attestation={attestation}
-              record={record}
-              features={features}
-              featuresUnavailable={featuresUnavailable}
-              modelInfo={modelInfo}
-            />
-          )}
         </div>
+
+        <button
+          type="submit"
+          disabled={phase === "loading"}
+          className="btn-primary shrink-0 justify-center whitespace-nowrap !py-2.5 text-xs disabled:opacity-50"
+        >
+          {phase === "loading" ? "Working…" : "Request attestation"}
+        </button>
+      </form>
+
+      <div className="mt-12 w-full text-left">
+        {phase === "loading" && <LoadingSteps step={step} />}
+        {phase === "error" && (
+          <ErrorPanel message={errorMessage} onRetry={() => void runAttestation(address.trim())} />
+        )}
+        {phase === "done" && attestation && (
+          <Results
+            attestation={attestation}
+            record={record}
+            features={features}
+            featuresUnavailable={featuresUnavailable}
+            modelInfo={modelInfo}
+          />
+        )}
       </div>
-    </section>
+    </div>
   );
 }
 
 function LoadingSteps({ step }: { step: number }) {
   return (
-    <div className="surface p-6">
+    <div className="surface mx-auto max-w-xl p-6">
       <ul className="flex flex-col gap-3">
         {STEPS.map((label, i) => (
           <li key={label} className="flex items-center gap-3 text-sm">
@@ -234,7 +215,7 @@ function LoadingSteps({ step }: { step: number }) {
 
 function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="surface flex flex-col items-start gap-3 border-red-500/30 p-6">
+    <div className="surface mx-auto flex max-w-xl flex-col items-start gap-3 border-red-500/30 p-6">
       <p className="text-sm text-red-300">{message}</p>
       <button type="button" onClick={onRetry} className="btn-ghost !py-2 text-xs">
         Retry
@@ -256,146 +237,108 @@ function Results({
   featuresUnavailable: boolean;
   modelInfo: ModelInfoResponse | null;
 }) {
-  const color = RISK_COLORS[attestation.risk_bucket_name] ?? "#888";
-
   return (
-    <div className="flex flex-col gap-6">
-      {/* 1. Attestation summary */}
-      <div className="surface p-6 md:p-8">
-        <div className="flex flex-wrap items-center gap-3">
-          <span
-            className="rounded-full px-3 py-1 font-display text-sm font-semibold text-ink-900"
-            style={{ background: color }}
-          >
-            {attestation.risk_bucket_name.replace("_", " ")}
-          </span>
-          <span className="font-display text-2xl font-semibold text-fog tabular">
-            {attestation.credit_score}
-          </span>
-          <span className="font-mono text-sm text-fog-muted tabular">
-            {(attestation.confidence * 100).toFixed(1)}% confidence
-          </span>
-          <span
-            className={`rounded-full px-3 py-1 text-xs ${
-              attestation.proof_generated
-                ? "bg-teal-bright/15 text-teal-bright"
-                : "bg-amber-bright/15 text-amber-bright"
-            }`}
-          >
-            {attestation.proof_generated ? "proof generated" : "hash-anchored fallback"}
-          </span>
-          <span
-            className={`rounded-full px-3 py-1 text-xs ${
-              attestation.zk_verified
-                ? "bg-teal-bright/15 text-teal-bright"
-                : "bg-white/10 text-fog-muted"
-            }`}
-          >
-            {attestation.zk_verified ? "ZK-verified on-chain" : "not verified on-chain"}
-          </span>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <SummaryCard attestation={attestation} />
+
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <div className="flex flex-col gap-6">
+          <Section title="Reason codes">
+            {attestation.reason_codes.length === 0 ? (
+              <p className="text-sm text-fog-muted">No notable risk signals for this wallet.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2">
+                {attestation.reason_codes.map((rc) => (
+                  <li
+                    key={rc.code}
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-fog"
+                  >
+                    {rc.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="Top model features">
+            {attestation.top_features.length === 0 ? (
+              <p className="text-sm text-fog-muted">No feature contributions returned.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="text-xs uppercase tracking-wide text-fog-faint">
+                      <th className="pb-2 font-normal">Feature</th>
+                      <th className="pb-2 font-normal">Value</th>
+                      <th className="pb-2 font-normal">Contribution</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attestation.top_features.map((f) => (
+                      <tr key={f.name} className="border-t border-white/[0.06]">
+                        <td className="py-2 font-mono text-xs text-fog">{f.name}</td>
+                        <td className="py-2 tabular text-fog-muted">{f.value.toFixed(3)}</td>
+                        <td className="py-2 tabular text-fog-muted">{f.contribution.toFixed(3)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
         </div>
-        <p className="mt-4 truncate font-mono text-xs text-fog-faint">{attestation.stellar_address}</p>
+
+        <div className="flex flex-col gap-6">
+          <Section title="Feature summary">
+            {featuresUnavailable && (
+              <p className="text-sm text-fog-muted">Feature summary unavailable for this wallet.</p>
+            )}
+            {features && (
+              <div className="grid grid-cols-2 gap-4">
+                {FEATURE_LABELS.filter(([key]) => key in features.summary).map(([key, label]) => (
+                  <div key={key}>
+                    <p className="text-xs uppercase tracking-wide text-fog-faint">{label}</p>
+                    <p className="mt-1 font-display text-lg text-fog tabular">
+                      {features.summary[key].toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section title="Proof & attestation details">
+            <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+              <Row k="Proof hash" v={attestation.proof_hash} mono />
+              <Row k="Transaction hash" v={record?.tx_hash ?? attestation.tx_hash ?? "pending"} mono />
+              <Row k="Attestor" v={record?.attestor ?? "—"} mono />
+              <Row k="Created" v={new Date(record?.created_at ?? attestation.created_at).toLocaleString()} />
+              <Row
+                k="Stored confidence"
+                v={record ? `${(record.confidence_bps / 100).toFixed(2)}%` : "—"}
+              />
+              <Row k="Submission mode" v={record?.submission_mode ?? "—"} />
+              <Row k="Full model hash" v={attestation.full_model_hash} mono />
+              <Row k="Distilled model hash" v={attestation.distilled_model_hash} mono />
+              <Row k="Feature schema" v={attestation.feature_schema_version} />
+              <Row k="Feature dimension" v={modelInfo ? String(modelInfo.feature_dimension) : "—"} />
+              <Row
+                k="Distilled fidelity"
+                v={
+                  modelInfo
+                    ? `${(modelInfo.distilled_exact_fidelity * 100).toFixed(1)}% exact, ${(
+                        modelInfo.distilled_within_one_fidelity * 100
+                      ).toFixed(1)}% within ±1 bucket`
+                    : "—"
+                }
+              />
+              <Row k="Proving system" v={modelInfo?.proving_system ?? "—"} />
+              {record?.submission_detail && <Row k="Submission detail" v={record.submission_detail} />}
+            </dl>
+          </Section>
+        </div>
       </div>
 
-      {/* 2. Reason codes */}
-      <Section title="Reason codes">
-        {attestation.reason_codes.length === 0 ? (
-          <p className="text-sm text-fog-muted">No notable risk signals for this wallet.</p>
-        ) : (
-          <ul className="flex flex-wrap gap-2">
-            {attestation.reason_codes.map((rc) => (
-              <li
-                key={rc.code}
-                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-fog"
-              >
-                {rc.label}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      {/* 3. Top model features */}
-      <Section title="Top model features">
-        {attestation.top_features.length === 0 ? (
-          <p className="text-sm text-fog-muted">No feature contributions returned.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-fog-faint">
-                  <th className="pb-2 font-normal">Feature</th>
-                  <th className="pb-2 font-normal">Value</th>
-                  <th className="pb-2 font-normal">Contribution</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attestation.top_features.map((f) => (
-                  <tr key={f.name} className="border-t border-white/[0.06]">
-                    <td className="py-2 font-mono text-xs text-fog">{f.name}</td>
-                    <td className="py-2 tabular text-fog-muted">{f.value.toFixed(3)}</td>
-                    <td className="py-2 tabular text-fog-muted">{f.contribution.toFixed(3)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
-
-      {/* 4. Feature summary */}
-      <Section title="Feature summary">
-        {featuresUnavailable && (
-          <p className="text-sm text-fog-muted">Feature summary unavailable for this wallet.</p>
-        )}
-        {features && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {FEATURE_LABELS.filter(([key]) => key in features.summary).map(([key, label]) => (
-              <div key={key}>
-                <p className="text-xs uppercase tracking-wide text-fog-faint">{label}</p>
-                <p className="mt-1 font-display text-lg text-fog tabular">
-                  {features.summary[key].toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* 5. Proof / attestation details */}
-      <Section title="Proof & attestation details">
-        <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
-          <Row k="Proof hash" v={attestation.proof_hash} mono />
-          <Row k="Transaction hash" v={record?.tx_hash ?? attestation.tx_hash ?? "pending"} mono />
-          <Row k="Attestor" v={record?.attestor ?? "—"} mono />
-          <Row k="Created" v={new Date(record?.created_at ?? attestation.created_at).toLocaleString()} />
-          <Row
-            k="Stored confidence"
-            v={record ? `${(record.confidence_bps / 100).toFixed(2)}%` : "—"}
-          />
-          <Row k="Submission mode" v={record?.submission_mode ?? "—"} />
-          <Row k="Full model hash" v={attestation.full_model_hash} mono />
-          <Row k="Distilled model hash" v={attestation.distilled_model_hash} mono />
-          <Row k="Feature schema" v={attestation.feature_schema_version} />
-          <Row k="Feature dimension" v={modelInfo ? String(modelInfo.feature_dimension) : "—"} />
-          <Row
-            k="Distilled fidelity"
-            v={
-              modelInfo
-                ? `${(modelInfo.distilled_exact_fidelity * 100).toFixed(1)}% exact, ${(
-                    modelInfo.distilled_within_one_fidelity * 100
-                  ).toFixed(1)}% within ±1 bucket`
-                : "—"
-            }
-          />
-          <Row k="Proving system" v={modelInfo?.proving_system ?? "—"} />
-          {record?.submission_detail && (
-            <Row k="Submission detail" v={record.submission_detail} />
-          )}
-        </dl>
-      </Section>
-
-      {/* Honesty panel */}
       <div className="surface p-6">
         <p className="mb-3 font-mono text-xs uppercase tracking-[0.2em] text-fog-faint">What this actually proves</p>
         <ul className="flex flex-col gap-2 text-sm text-fog-muted">
@@ -414,6 +357,76 @@ function Results({
           <li>Raw wallet data — transactions, balances, counterparties — never touches on-chain storage.</li>
           <li>The full model is hash-anchored for auditability; only the distilled model is the ZK target.</li>
         </ul>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ attestation }: { attestation: AttestationResponse }) {
+  const color = RISK_COLORS[attestation.risk_bucket_name] ?? "#888";
+
+  return (
+    <div className="surface p-6 md:p-8">
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className="rounded-full px-3 py-1 font-display text-sm font-semibold text-ink-900"
+          style={{ background: color }}
+        >
+          {attestation.risk_bucket_name.replace("_", " ")}
+        </span>
+        <span className="font-display text-2xl font-semibold text-fog tabular">
+          {attestation.credit_score}
+        </span>
+        <span className="font-mono text-sm text-fog-muted tabular">
+          {(attestation.confidence * 100).toFixed(1)}% confidence
+        </span>
+        <span
+          className={`rounded-full px-3 py-1 text-xs ${
+            attestation.proof_generated
+              ? "bg-teal-bright/15 text-teal-bright"
+              : "bg-amber-bright/15 text-amber-bright"
+          }`}
+        >
+          {attestation.proof_generated ? "proof generated" : "hash-anchored fallback"}
+        </span>
+        <span
+          className={`rounded-full px-3 py-1 text-xs ${
+            attestation.zk_verified ? "bg-teal-bright/15 text-teal-bright" : "bg-white/10 text-fog-muted"
+          }`}
+        >
+          {attestation.zk_verified ? "ZK-verified on-chain" : "not verified on-chain"}
+        </span>
+      </div>
+      <p className="mt-4 truncate font-mono text-xs text-fog-faint">{attestation.stellar_address}</p>
+
+      <RiskGauge bucket={attestation.risk_bucket} />
+    </div>
+  );
+}
+
+function RiskGauge({ bucket }: { bucket: number }) {
+  const markerLeft = `${(bucket + 0.5) * (100 / BUCKETS.length)}%`;
+
+  return (
+    <div className="mt-7">
+      <div className="relative h-6">
+        <div
+          className="absolute -top-1 -translate-x-1/2 border-x-[6px] border-t-[7px] border-x-transparent transition-[left] duration-700 ease-smooth"
+          style={{ left: markerLeft, borderTopColor: RISK_COLORS[BUCKETS[bucket]] }}
+        />
+      </div>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full">
+        {BUCKETS.map((b, i) => (
+          <div
+            key={b}
+            className="flex-1 transition-opacity duration-500"
+            style={{ background: RISK_COLORS[b], opacity: i === bucket ? 1 : 0.25 }}
+          />
+        ))}
+      </div>
+      <div className="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-wide text-fog-faint">
+        <span>Very low risk</span>
+        <span>Very high risk</span>
       </div>
     </div>
   );
