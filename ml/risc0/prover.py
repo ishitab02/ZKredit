@@ -40,6 +40,11 @@ _ENV_FEATURE_VECTOR = "ZKREDIT_FEATURE_VECTOR"
 _ENV_IDENTITY_COMMITMENT = "ZKREDIT_IDENTITY_COMMITMENT"
 _ENV_OUT_DIR = "ZKREDIT_OUT_DIR"
 
+# Prod (Fly) bakes a pre-compiled host binary into the image and points this at
+# it, so the container needs no cargo/Rust toolchain at runtime. Unset (local
+# dev) falls back to `cargo run`, which builds on demand.
+_ENV_HOST_BIN = "ZKREDIT_HOST_BIN"
+
 # Groth16 STARK->SNARK is slow on first run (pulls the Docker image); give it room.
 _DEFAULT_TIMEOUT_S = 900
 
@@ -79,10 +84,18 @@ def identity_commitment_for(stellar_address: str) -> bytes:
 def prover_available() -> bool:
     """True only when a real Groth16 receipt can actually be produced here.
 
-    Requires ``r0vm`` (the zkVM prover), ``cargo`` (to run the host), and ``docker``
-    (the STARK->SNARK compression step runs in Docker). Missing any means live
-    proving is impossible and the caller must fall back.
+    Local proving requires ``r0vm`` (the zkVM prover), ``cargo`` (to run the
+    host), and ``docker`` (the STARK->SNARK compression step runs in Docker).
+    With remote Bento proving configured (``bento_strategy`` != off, or a
+    ``BONSAI_API_URL`` in the environment), the GPU node does all of that and
+    only ``cargo`` is needed here — the host binary becomes a thin client.
     """
+    from ml.risc0.bento_node import remote_proving_configured
+
+    if remote_proving_configured():
+        # A prebuilt host binary (prod image) or cargo (dev) can drive the thin
+        # client; the GPU node does the actual STARK + Groth16 work.
+        return bool(os.environ.get(_ENV_HOST_BIN)) or shutil.which("cargo") is not None
     return all(shutil.which(tool) is not None for tool in ("r0vm", "cargo", "docker"))
 
 
@@ -118,6 +131,8 @@ def prove_wallet(
             "Install per ml/risc0/README.md §Setup to enable live per-wallet proving."
         )
 
+    from ml.risc0.bento_node import proving_endpoint
+
     commitment = identity_commitment_for(stellar_address)
     vector_json = feature_vector_json(selected_vector)
 
@@ -127,25 +142,43 @@ def prove_wallet(
         out_dir = tmp_path / "out"
         vector_path.write_text(vector_json)
 
-        env = {
-            **os.environ,
-            _ENV_FEATURE_VECTOR: str(vector_path),
-            _ENV_IDENTITY_COMMITMENT: commitment.hex(),
-            _ENV_OUT_DIR: str(out_dir),
-        }
-        try:
-            subprocess.run(
-                ["cargo", "run", "--release", "--manifest-path", str(_HOST_MANIFEST)],
-                env=env,
-                check=True,
-                capture_output=True,
-                timeout=timeout_s,
-            )
-        except subprocess.CalledProcessError as err:
-            raise RuntimeError(
-                f"RISC Zero host failed (exit {err.returncode}): "
-                f"{err.stderr.decode(errors='replace')[-2000:]}"
-            ) from err
+        # proving_endpoint() is the scale-to-zero seam: for remote strategies it
+        # boots the GPU node + tunnel and yields BONSAI_API_URL/BONSAI_API_KEY
+        # for the host subprocess (risc0's default_prover routes to Bento when
+        # they are set); for "off" it yields nothing and the host proves locally.
+        with proving_endpoint() as bento_env:
+            env = {
+                **os.environ,
+                **bento_env,
+                _ENV_FEATURE_VECTOR: str(vector_path),
+                _ENV_IDENTITY_COMMITMENT: commitment.hex(),
+                _ENV_OUT_DIR: str(out_dir),
+            }
+            host_bin = os.environ.get(_ENV_HOST_BIN)
+            if host_bin:
+                cmd = [host_bin]
+            else:
+                # --bin is required: the host crate ships execute/validate helper
+                # binaries alongside the fixture generator, so `cargo run` alone
+                # is ambiguous.
+                cmd = [
+                    "cargo", "run", "--release",
+                    "--manifest-path", str(_HOST_MANIFEST),
+                    "--bin", "zkredit-risc0-host",
+                ]
+            try:
+                subprocess.run(
+                    cmd,
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                    timeout=timeout_s,
+                )
+            except subprocess.CalledProcessError as err:
+                raise RuntimeError(
+                    f"RISC Zero host failed (exit {err.returncode}): "
+                    f"{err.stderr.decode(errors='replace')[-2000:]}"
+                ) from err
 
         return _read_proof(out_dir)
 
