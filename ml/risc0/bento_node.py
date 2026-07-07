@@ -295,7 +295,11 @@ class _NodeManager:
             with self._mutex:
                 if self._reaper is not None:
                     self._reaper.cancel()
-                yield {"BONSAI_API_URL": url, "BONSAI_API_KEY": os.environ.get("BONSAI_API_KEY", "zkredit")}
+                url = self._ensure_endpoint()
+                yield {
+                    "BONSAI_API_URL": url,
+                    "BONSAI_API_KEY": os.environ.get("BONSAI_API_KEY", "zkredit"),
+                }
                 self._schedule_reaper()
 
 
@@ -349,7 +353,11 @@ def _cli() -> None:
         if node is None:
             print(f"node {s.e2e_node_name!r}: absent")
         else:
-            print(json.dumps({k: node.get(k) for k in ("id", "name", "status", "public_ip_address")}))
+            print(
+                json.dumps(
+                    {k: node.get(k) for k in ("id", "name", "status", "public_ip_address")}
+                )
+            )
     elif cmd == "up":
         with _MANAGER.session() as env:
             print(f"bento live: {env['BONSAI_API_URL']} (node ip {_MANAGER._node_ip})")
