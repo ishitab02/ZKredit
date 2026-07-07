@@ -77,6 +77,9 @@ pub enum Error {
     UnauthorizedAttestor = 13,
     /// RISC Zero guest image id has not been registered (set_risc0_image_id).
     Risc0ImageNotSet = 14,
+    /// Re-attestation carried an `issued_at` not strictly newer than the stored
+    /// one — rejected so an older (possibly better) score can't be replayed.
+    StaleAttestation = 15,
 }
 
 /// Standard attestation-written event.

@@ -86,6 +86,15 @@ impl RiskAttestation {
     /// 72-byte guest journal. Caller supplies the non-proven metadata in `data` (attestor,
     /// timestamps, model hashes); the proven fields are overwritten from the journal so the
     /// stored record always reflects the proof.
+    /// Attest — or **re-attest** — a wallet from a RISC Zero receipt.
+    ///
+    /// Unlike the hash/proof paths, this is no longer write-once: a wallet can
+    /// re-attest after further on-chain activity to refresh its score. The only
+    /// guard is monotonicity — `data.issued_at` must be strictly newer than the
+    /// stored attestation's — so an older (possibly better) signed attestation
+    /// cannot be replayed to shed a worse, more recent score. On-chain we keep
+    /// the latest version; the full version history lives off-chain in the
+    /// Postgres `attestations` table.
     pub fn attest_with_risc0(
         env: Env,
         wallet: Address,
@@ -94,12 +103,15 @@ impl RiskAttestation {
         journal: Bytes,
     ) -> Result<(), Error> {
         wallet.require_auth();
-        if env
+        if let Some(existing) = env
             .storage()
             .persistent()
-            .has(&DataKey::Attestation(wallet.clone()))
+            .get::<DataKey, AttestationData>(&DataKey::Attestation(wallet.clone()))
         {
-            return Err(Error::AlreadyAttested);
+            // Re-attestation: require a strictly newer issued_at (anti-replay).
+            if data.issued_at <= existing.issued_at {
+                return Err(Error::StaleAttestation);
+            }
         }
 
         let registry_id = Self::get_attestor_registry_id(&env)?;
