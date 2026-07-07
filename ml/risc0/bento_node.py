@@ -331,7 +331,10 @@ def proving_endpoint() -> Iterator[dict[str, str]]:
 
 def remote_proving_configured() -> bool:
     """True when proofs go to a remote Bento (no local r0vm/Docker needed)."""
-    return get_settings().bento_strategy != "off" or "BONSAI_API_URL" in os.environ
+    strategy = get_settings().bento_strategy
+    if strategy == "static":
+        return "BONSAI_API_URL" in os.environ
+    return strategy in ("e2e_stop", "e2e_recreate")
 
 
 def _cli() -> None:
