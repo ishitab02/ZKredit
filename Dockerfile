@@ -21,9 +21,14 @@ COPY pyproject.toml README.md alembic.ini ./
 COPY ml ./ml
 COPY api ./api
 COPY migrations ./migrations
-COPY model_store ./model_store
+COPY scripts ./scripts
 
 RUN pip install --upgrade pip && pip install .
+
+# The trained model artifacts (full.joblib etc.) are gitignored/generated, so
+# they are not in the build context. Generate a PLACEHOLDER model in-image so the
+# API serves end-to-end. Replace with real training on real data (see the script).
+RUN python scripts/bootstrap_demo_model.py
 
 EXPOSE 8000
 
