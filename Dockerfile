@@ -1,6 +1,30 @@
 # ZKredit API image (1.6). Built by Fly (fly.toml) and docker-compose's ml-api.
-# The worker image for RISC0/Bento/Boundless proving (Phase 2) is a separate,
-# Rust-toolchain-based Dockerfile added in that phase.
+#
+# Stage 1 compiles the RISC Zero host binary (ml/risc0/host) that drives real
+# per-wallet proving against the Bento GPU node (docs/handoff-soham-prod-proving.md).
+# It embeds the guest ELF at build time (risc0_build::embed_methods in
+# ml/risc0/methods/build.rs) — no separate artifact to ship. Same base image as
+# stage 2 so glibc matches exactly; no Docker-in-Docker needed for the guest build.
+FROM python:3.11-slim AS risc0-builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential curl ca-certificates git pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
+ENV PATH=/opt/cargo/bin:/opt/rustup/bin:/root/.risc0/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+# RISC Zero toolchain (external source, risczero.com) — pinned to the version
+# contracts/shared/src/risc0.rs's VK/control root were generated against.
+RUN curl -L https://risczero.com/install | bash \
+    && rzup install rust 1.94.1 \
+    && rzup install cargo-risczero 3.0.5 \
+    && rzup install r0vm 3.0.5
+
+WORKDIR /build
+COPY ml/risc0 ./ml/risc0
+RUN cargo build --release --manifest-path ml/risc0/host/Cargo.toml --bin zkredit-risc0-host
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -32,6 +56,13 @@ RUN pip install --upgrade pip && pip install .
 # Safety net: if model_store somehow lacks a trained model, generate a
 # placeholder so the API still boots. No-op when the real model is present.
 RUN python scripts/bootstrap_demo_model.py
+
+# Real per-wallet RISC0 proving (ml/risc0/prover.py branches on this): a thin
+# client that offloads STARK+Groth16 to the Bento GPU node via
+# BONSAI_API_URL/BONSAI_API_KEY (BENTO_STRATEGY=static, set as Fly secrets) —
+# no cargo/Rust toolchain needed at runtime.
+COPY --from=risc0-builder /build/ml/risc0/host/target/release/zkredit-risc0-host /usr/local/bin/zkredit-risc0-host
+ENV ZKREDIT_HOST_BIN=/usr/local/bin/zkredit-risc0-host
 
 EXPOSE 8000
 
