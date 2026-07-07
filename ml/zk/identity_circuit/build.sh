@@ -30,9 +30,16 @@ echo "zkredit-dg6-$(date +%s 2>/dev/null || echo fixed)" | \
   $SNARKJS zkey contribute identity_0000.zkey identity_final.zkey --name="dg6" -v
 $SNARKJS zkey export verificationkey identity_final.zkey vkey.json
 
-echo "==> compute Poseidon(secret) witness input"
-# Poseidon hashing is done by the circuit; we only supply the private secret.
-printf '{ "secret": "%s" }\n' "$SECRET" > input.json
+echo "==> compute witness input (secret + wallet binding)"
+# Poseidon hashing is done by the circuit; we supply the private secret plus the
+# public `wallet` field element for a fixed TEST address. addr_to_fr =
+# sha256(strkey) mod r — computed identically here, in the frontend
+# (identity-proof.ts), and in WalletIdentity::register_wallet.
+WALLET_STRKEY="GB32CDTILCCX7TTBWMJDEL64LL56TO73DXZUUE3BQSDNCIDEHDOAB2RZ"
+WALLET_FE="$(node -e 'const c=require("crypto");const r=21888242871839275222246405745257275088548364400416034343698204186575808495617n;const h=c.createHash("sha256").update(process.argv[1],"utf8").digest("hex");process.stdout.write((BigInt("0x"+h)%r).toString())' "$WALLET_STRKEY")"
+printf '{ "secret": "%s", "wallet": "%s" }\n' "$SECRET" "$WALLET_FE" > input.json
+echo "    wallet strkey: $WALLET_STRKEY"
+echo "    wallet fe:     $WALLET_FE"
 node identity_js/generate_witness.js identity_js/identity.wasm input.json witness.wtns
 
 echo "==> prove"

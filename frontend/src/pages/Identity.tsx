@@ -25,12 +25,17 @@ export function Identity() {
   const [connectError, setConnectError] = useState<string | null>(null)
 
   const generate = async () => {
+    if (!address) {
+      setGenError('Connect your wallet first — the identity proof binds to it.')
+      return
+    }
     setGenerating(true)
     setGenError(null)
     try {
-      // Fresh identity: prove knowledge of a new random secret. This also yields
-      // the Poseidon commitment (the circuit's public output).
-      setIdentity(await proveIdentity())
+      // Fresh identity: prove knowledge of a new random secret, bound to the
+      // connected wallet (anti-replay). This also yields the Poseidon commitment
+      // (the circuit's public output).
+      setIdentity(await proveIdentity(address))
     } catch (e) {
       setGenError(String(e instanceof Error ? e.message : e))
     } finally {

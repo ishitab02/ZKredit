@@ -1,7 +1,20 @@
 #![no_std]
 
+use soroban_sdk::crypto::bn254::Fr;
 use soroban_sdk::{contract, contractclient, contractimpl, Address, Bytes, BytesN, Env};
 use zkredit_shared::{groth16, AttestationData, DataKey, Error};
+
+/// Canonical field element for a wallet address, shared by the identity circuit
+/// binding: `addr_to_fr = Fr(sha256(strkey)) mod r`, in 32-byte big-endian.
+///
+/// Computed identically by the frontend (`identity-proof.ts`) so the value the
+/// prover feeds the circuit as the public `wallet` input matches what this
+/// contract derives — binding a proof to a specific caller and preventing replay.
+fn addr_to_fr(env: &Env, wallet: &Address) -> BytesN<32> {
+    let strkey_bytes = wallet.to_string().to_bytes();
+    let hash = env.crypto().sha256(&strkey_bytes);
+    Fr::from_bytes(hash.to_bytes()).to_bytes()
+}
 
 /// Minimal cross-contract view of AttestorRegistry, so WalletIdentity can gate
 /// group-score writes to authorized attestors (mirrors RiskAttestation).
@@ -90,9 +103,16 @@ impl WalletIdentity {
             if !groth16::verify_groth16(&env, &vk_bytes, &proof_bytes) {
                 return Err(Error::InvalidProof);
             }
-            // Bind the proof to this commitment: the proven public input (the
+            // Bind the proof to this commitment: public input 0 (the proven
             // Poseidon commitment) must equal the commitment being registered.
             if groth16::nth_public_input(&env, &proof_bytes, 0) != commitment {
+                return Err(Error::InvalidProof);
+            }
+            // Bind the proof to THIS wallet (anti-replay): public input 1 must
+            // equal addr_to_fr(wallet). proof_bytes is public in the tx, so
+            // without this a third party could replay a member's proof against
+            // their own wallet argument and join the group.
+            if groth16::nth_public_input(&env, &proof_bytes, 1) != addr_to_fr(&env, &wallet) {
                 return Err(Error::InvalidProof);
             }
         }
