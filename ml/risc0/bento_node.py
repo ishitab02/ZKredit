@@ -295,10 +295,7 @@ class _NodeManager:
             with self._mutex:
                 if self._reaper is not None:
                     self._reaper.cancel()
-                url = self._ensure_endpoint()
-            try:
-                yield {"BONSAI_API_URL": url, "BONSAI_API_KEY": "zkredit"}
-            finally:
+                yield {"BONSAI_API_URL": url, "BONSAI_API_KEY": os.environ.get("BONSAI_API_KEY", "zkredit")}
                 self._schedule_reaper()
 
 
