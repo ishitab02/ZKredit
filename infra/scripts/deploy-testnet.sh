@@ -129,6 +129,8 @@ WALLET_IDENTITY_ID="$(deploy_contract "${WALLET_IDENTITY_WASM}" "${ADMIN_ADDRESS
 log "wiring contracts..."
 invoke "${RISK_ID}" "RiskAttestation::set_attestor_registry" set_attestor_registry --contract_id "${REGISTRY_ID}"
 invoke "${RISK_ID}" "RiskAttestation::set_wallet_identity" set_wallet_identity --contract_id "${WALLET_IDENTITY_ID}"
+# WalletIdentity needs the registry too, so update_group_score is attestor-gated (3.1 fix).
+invoke "${WALLET_IDENTITY_ID}" "WalletIdentity::set_attestor_registry" set_attestor_registry --contract_id "${REGISTRY_ID}"
 invoke "${REGISTRY_ID}" "AttestorRegistry::authorize" authorize --attestor "${ATTESTOR_ADDRESS}"
 invoke "${LENDING_ID}" "MockLendingPool::set_risk_attestation" set_risk_attestation --contract_id "${RISK_ID}"
 
