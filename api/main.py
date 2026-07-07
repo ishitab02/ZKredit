@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from api.deps import setup_state, teardown_state
 from api.routes import router as v1_router
+from ml.config import get_settings
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -44,13 +45,17 @@ app = FastAPI(
 )
 app.include_router(v1_router)
 
-# Demo-permissive: the dashboard is a public-read attestation lookup, no
-# cookies/auth involved, and the frontend origin isn't fixed yet (localhost
-# in dev, a Vercel URL in prod). Tighten to an explicit allowlist once the
-# frontend has a stable deployed origin.
+# Explicit CORS allowlist (replaces the old wildcard). Origins come from
+# ml.config (localhost dev + the deployed Vercel prod URL); the optional regex
+# matches Vercel preview deployments. Credentials are allowed so the session
+# cookie (see the /attest auth gate) is accepted cross-origin — which is only
+# valid with an explicit allowlist, never with "*".
+_cors = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors.cors_origins_list,
+    allow_origin_regex=_cors.cors_allow_origin_regex,
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

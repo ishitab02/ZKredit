@@ -8,6 +8,30 @@ browser.
 Everything here runs on **Stellar testnet** and is real — the proof is verified
 on-chain by the Soroban contract, not mocked.
 
+## TL;DR — rerun everything (two terminals)
+
+Contracts are already deployed to testnet (IDs in `.env.local` +
+`frontend/.env.local`). You only need to start two things:
+
+```sh
+# terminal 1 — the attestor (server-side signer). Reliable: stdlib + stellar-sdk only.
+python3 infra/attestor_service.py            # http://127.0.0.1:8790
+
+# terminal 2 — the web app
+cd frontend && npm install && npm run dev     # http://localhost:5173
+```
+
+Open `http://localhost:5173/attestation`, scroll to **"On-chain attestation
+(live testnet)"**, and follow §2. Verified live end-to-end just before writing
+this: fresh wallet → attest → sign → `zk_verified=true` on-chain → loan executed
+(txs in §3).
+
+> The attestor service serves the demo path. Ishita's fully-integrated API
+> (`POST /api/v1/attest/{addr}/prepare` in `api/`) does the same co-sign with
+> live per-wallet proving + honest fixture fallback; it needs the FastAPI + ML
+> stack running (`scripts/run_api_local.sh`). For the video, the standalone
+> service is the lower-setup, more robust choice.
+
 ---
 
 ## 0. What you're demonstrating (30-second framing)
@@ -44,7 +68,7 @@ cd frontend && npm install && npm run dev
 #   -> http://localhost:5173/
 ```
 
-Open `http://localhost:5173/#attestation` (the Attestation page).
+Open `http://localhost:5173/attestation` (the Attestation page).
 
 ---
 
@@ -146,9 +170,9 @@ stellar contract invoke --id "$(grep RISK_ATTESTATION .env.local | cut -d= -f2)"
 
 Real transactions from live validation runs (viewable on stellar.expert/testnet):
 
-- attestation submitted (co-sign): `e46f4ac5d9cba43ae755f25e2f4a4a16dfe770fab1d701c0ed05ad67a68d3ee6`
-- earlier attestation: `fda0a386d3aac28bd02bcd9e06cc438b4b2eedfd2c5fc1035dacc603c78ebcc4`
-- risk-gated loan executed: `d08049748c783ec7d07657355ce1e426c6d30d3b3ec554b5ecb90b2a96163196`
+- attestation submitted (co-sign, via attestor service): `34eb21fd7161d6c5e741d3ba07f21e020e3855fe9cd20648f1c8d110612e5eec`
+- risk-gated loan executed: `fd1c1280ba881b94e2791a0604ce0eea7a00c14f6e3042471847c3e930618472`
+- earlier co-sign attestations: `e46f4ac5…`, `fda0a386…`
 
 ---
 

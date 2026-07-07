@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "data": {
+      "source": "stellar/stellar-dev-skill",
+      "sourceType": "github",
+      "skillPath": "skills/data/SKILL.md",
+      "computedHash": "d9d41da110abd038dcd0885528fe898528f0c1b4efc66e780e9ad2bff745d278"
+    },
+    "smart-contracts": {
+      "source": "stellar/stellar-dev-skill",
+      "sourceType": "github",
+      "skillPath": "skills/smart-contracts/SKILL.md",
+      "computedHash": "4887ea461be7fb985183f767c5b63d5d3b0d98be21facc2bb69ce9bd0580c050"
+    },
+    "zk-proofs": {
+      "source": "stellar/stellar-dev-skill",
+      "sourceType": "github",
+      "skillPath": "skills/zk-proofs/SKILL.md",
+      "computedHash": "24c59fbf758277022979d07c7838023fe41487f6dea12c48e343963c5a5f778e"
+    }
+  }
+}

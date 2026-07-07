@@ -76,17 +76,41 @@ function randomFieldElement(): string {
   return n.toString()
 }
 
+/** BN254 scalar field order r. */
+const BN254_R =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n
+
 /**
- * Generate an identity proof. Pass an existing `secretDec` to re-prove the same
- * identity (e.g. linking a second wallet); omit it to mint a fresh identity.
+ * Canonical field element for a wallet address: sha256(strkey) mod r, as a
+ * decimal string. MUST match `WalletIdentity::addr_to_fr` (Fr(sha256(strkey)))
+ * byte-for-byte, so the proof's public `wallet` input binds to the on-chain
+ * check and cannot be replayed against a different wallet.
  */
-export async function proveIdentity(secretDec?: string): Promise<IdentityProof> {
+async function addrToFieldElement(walletAddress: string): Promise<string> {
+  const bytes = new TextEncoder().encode(walletAddress)
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+  let n = 0n
+  for (const b of digest) n = (n << 8n) | BigInt(b) // big-endian
+  return (n % BN254_R).toString()
+}
+
+/**
+ * Generate an identity proof bound to `walletAddress`. Pass an existing
+ * `secretDec` to re-prove the same identity (e.g. linking a second wallet);
+ * omit it to mint a fresh identity. The proof binds to the wallet, so it cannot
+ * be replayed by a third party against a different wallet.
+ */
+export async function proveIdentity(
+  walletAddress: string,
+  secretDec?: string,
+): Promise<IdentityProof> {
   // Dynamic import keeps snarkjs out of the initial bundle.
   const snarkjs = await import('snarkjs')
   const secret = secretDec ?? randomFieldElement()
+  const wallet = await addrToFieldElement(walletAddress)
 
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-    { secret },
+    { secret, wallet },
     WASM_URL,
     ZKEY_URL,
   )

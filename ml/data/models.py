@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, func
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -49,4 +49,38 @@ class Operation(Base):
     raw: Mapped[dict[str, Any]] = mapped_column(JSON)
     ingested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Attestation(Base):
+    """One row per attestation submission through the API contract seam.
+
+    This is a *history* table, not an upsert-in-place record: every submission
+    (including local-fallback re-scores, which the on-chain contract's
+    single-write ``AlreadyAttested`` guard forbids but the API mirror allows)
+    appends a new row. ``read_attestation`` returns the latest by ``created_at``.
+    It mirrors the API-side view of the on-chain attestation, never raw wallet
+    data.
+    """
+
+    __tablename__ = "attestations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stellar_address: Mapped[str] = mapped_column(String(56), index=True)
+    # AttestationParams projection.
+    risk_bucket: Mapped[int] = mapped_column(Integer)
+    confidence_bps: Mapped[int] = mapped_column(Integer)
+    full_model_hash: Mapped[str] = mapped_column(String(64))
+    distilled_model_hash: Mapped[str] = mapped_column(String(64))
+    proof_hash: Mapped[str] = mapped_column(String(64))
+    zk_verified: Mapped[bool] = mapped_column(Boolean)
+    # Submission bookkeeping.
+    tx_hash: Mapped[str] = mapped_column(String(64))
+    attestor: Mapped[str] = mapped_column(String(56))
+    issued_at: Mapped[int] = mapped_column(BigInteger)  # unix seconds
+    expires_at: Mapped[int] = mapped_column(BigInteger)  # unix seconds
+    submission_mode: Mapped[str] = mapped_column(String(32))
+    submission_detail: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )

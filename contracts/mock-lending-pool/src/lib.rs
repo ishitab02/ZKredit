@@ -53,17 +53,20 @@ impl MockLendingPool {
 
         let now = env.ledger().timestamp();
         if let Some(a) = attestation {
-            if now <= a.expires_at {
+            // Anti-wallet-hopping gate: real borrowing capacity requires a
+            // KYC-verified, unexpired attestation. A fresh/anonymous wallet gets
+            // only thin-file terms, so abandoning a bad-scored wallet and
+            // re-scoring on a clean one gains nothing (the clean wallet is either
+            // anonymous → thin-file, or KYC'd → its nullifier forces it into the
+            // same identity/score). KYC is the credit gate, not a discount.
+            if a.kyc_verified && now <= a.expires_at {
                 return Ok(terms_from_bucket(a));
             }
         }
 
-        // Default terms when no attestation or expired.
-        Ok(LoanOffer {
-            max_principal: 1000,
-            collateral_ratio_basis_points: 15000,
-            apr_basis_points: 1500,
-        })
+        // Thin-file: un-KYC'd / un-attested / expired wallets get a tiny cap at a
+        // punitive rate — strictly worse than any legitimate KYC'd history.
+        Ok(thin_file_terms())
     }
 
     pub fn execute_loan(_env: Env, _wallet: Address) -> bool {
@@ -72,6 +75,19 @@ impl MockLendingPool {
     }
 }
 
+/// Thin-file terms for wallets without a KYC-verified attestation: a token cap
+/// at the worst rate. Real credit requires KYC (see `get_loan_terms`).
+fn thin_file_terms() -> LoanOffer {
+    LoanOffer {
+        max_principal: 100,
+        collateral_ratio_basis_points: 25000,
+        apr_basis_points: 3500,
+    }
+}
+
+/// Full terms for a KYC-verified wallet, priced by risk bucket. `zk_verified`
+/// still distinguishes an on-chain-proven score from a hash-anchored one; KYC
+/// itself is now the access gate (in `get_loan_terms`), not a rate discount.
 fn terms_from_bucket(a: AttestationData) -> LoanOffer {
     let (collateral_bp, base_apr_bp) = match a.risk_bucket {
         0 => (12000, 800),  // VERY_LOW
@@ -82,15 +98,11 @@ fn terms_from_bucket(a: AttestationData) -> LoanOffer {
         _ => (15000, 1500),
     };
 
-    let mut apr_bp: u32 = if a.zk_verified {
+    let apr_bp: u32 = if a.zk_verified {
         base_apr_bp
     } else {
         base_apr_bp + 200
     };
-    // KYC-verified wallets get an additional −100 bps discount on top of the ZK rate.
-    if a.kyc_verified {
-        apr_bp = apr_bp.saturating_sub(100);
-    }
 
     LoanOffer {
         max_principal: 1000,
@@ -125,29 +137,31 @@ mod tests {
     }
 
     #[test]
-    fn apr_ladder_applies_zk_premium_and_kyc_discount() {
+    fn apr_ladder_applies_zk_premium() {
         let env = Env::default();
-
-        // MEDIUM bucket base APR = 1500 bps.
-        assert_eq!(
-            terms_from_bucket(att(&env, 2, true, false)).apr_basis_points,
-            1500
-        );
-        // Hash-anchored (not ZK) adds +200 bps.
-        assert_eq!(
-            terms_from_bucket(att(&env, 2, false, false)).apr_basis_points,
-            1700
-        );
-        // ZK + KYC: base − 100 bps.
+        // MEDIUM bucket, ZK-proven: base APR = 1500 bps.
         assert_eq!(
             terms_from_bucket(att(&env, 2, true, true)).apr_basis_points,
-            1400
+            1500
         );
-        // Hash-anchored + KYC: base + 200 − 100 bps.
+        // Hash-anchored (not ZK) adds +200 bps. KYC no longer changes the rate —
+        // it is the access gate in get_loan_terms, not a discount here.
         assert_eq!(
             terms_from_bucket(att(&env, 2, false, true)).apr_basis_points,
-            1600
+            1700
         );
+    }
+
+    #[test]
+    fn thin_file_is_worse_than_any_kyc_bucket() {
+        let env = Env::default();
+        let thin = thin_file_terms();
+        // Token cap + punitive rate, worse than even the VERY_HIGH bucket.
+        assert_eq!(thin.max_principal, 100);
+        assert!(thin.apr_basis_points >= 3000);
+        assert!(thin.collateral_ratio_basis_points >= 20000);
+        // A KYC-verified wallet, by contrast, gets real borrowing capacity.
+        assert_eq!(terms_from_bucket(att(&env, 2, true, true)).max_principal, 1000);
     }
 
     #[test]

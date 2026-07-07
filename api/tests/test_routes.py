@@ -18,10 +18,12 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import StaticPool
 
 import api.routes.v1 as v1
-from api.contract_stub import _STORE
 from api.validation import STELLAR_ADDRESS_PATTERN
+from ml.data.db import create_session_factory, init_db
 from ml.features.base import WalletData
 from ml.models.registry import load_artifacts
 from ml.types import AttestationResult, ReasonCode, RiskBucket, TopFeature
@@ -29,18 +31,35 @@ from ml.types import AttestationResult, ReasonCode, RiskBucket, TopFeature
 ADDRESS = "G" + "A" * 55
 
 
-@pytest.fixture(autouse=True)
-def clear_store() -> None:
-    _STORE.clear()
+@pytest.fixture
+async def session_factory():
+    """A fresh in-memory SQLite session factory with the attestation schema.
+
+    ``StaticPool`` + a shared connection keep the in-memory DB alive across the
+    ``init_db`` call and the request handlers under test.
+    """
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    await init_db(engine)
+    try:
+        yield create_session_factory(engine)
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
 async def test_model_info_is_honest() -> None:
     artifacts = load_artifacts("model_store")
     body = await v1.model_info(artifacts)
-    assert body.zk_verified_capability is False
-    assert "halo2" in body.proving_system.lower()
+    # RISC0 -> Groth16/BN254 on-chain verification is live (post-EZKL pivot).
+    assert body.zk_verified_capability is True
+    assert "risc0" in body.proving_system.lower()
     assert "groth16" in body.proving_system.lower()
+    assert "halo2" not in body.proving_system.lower()
+    assert "ezkl" not in body.proving_system.lower()
     assert len(body.distilled_features) == 30
     assert body.distilled_model_type == "random_forest"
     assert body.distilled_feature_space == "transformed"
@@ -49,9 +68,9 @@ async def test_model_info_is_honest() -> None:
 
 
 @pytest.mark.asyncio
-async def test_attestation_not_found() -> None:
+async def test_attestation_not_found(session_factory) -> None:
     with pytest.raises(HTTPException) as exc:
-        await v1.get_attestation(ADDRESS)
+        await v1.get_attestation(ADDRESS, session_factory)
     assert exc.value.status_code == 404
 
 
@@ -97,7 +116,9 @@ async def test_wallet_features_after_seed(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_attest_and_read_back(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_attest_and_read_back(
+    monkeypatch: pytest.MonkeyPatch, session_factory
+) -> None:
     fake = AttestationResult(
         stellar_address=ADDRESS,
         risk_bucket=RiskBucket.LOW,
@@ -126,7 +147,7 @@ async def test_attest_and_read_back(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(v1, "attest", _fake_attest)
 
-    body = await v1.attest_wallet(ADDRESS, object(), load_artifacts("model_store"))
+    body = await v1.attest_wallet(ADDRESS, session_factory, load_artifacts("model_store"))
     assert body.risk_bucket == 1
     assert body.risk_bucket_name == "LOW"
     assert body.credit_score == 710
@@ -140,7 +161,7 @@ async def test_attest_and_read_back(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     ]
 
-    read = await v1.get_attestation(ADDRESS)
+    read = await v1.get_attestation(ADDRESS, session_factory)
     assert read.confidence_bps == 9100
     assert read.submission_mode == "local_fallback"
     assert isinstance(read.submission_detail, str)

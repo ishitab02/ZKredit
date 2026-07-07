@@ -114,6 +114,34 @@ fn attest_with_risc0_binds_journal_and_sets_zk_verified() {
 }
 
 #[test]
+fn attest_with_risc0_allows_reattest_with_newer_issued_at() {
+    let c = setup(true);
+    let env = &c.env;
+    let wallet = Address::generate(env);
+    let seal = Bytes::from_slice(env, SEAL);
+    let journal = Bytes::from_slice(env, JOURNAL);
+
+    // First attestation (issued_at = 0).
+    let d1 = attestation(env, &wallet, &c.attestor);
+    c.risk.attest_with_risc0(&wallet, &d1, &seal, &journal);
+    assert_eq!(c.risk.get_attestation(&wallet).unwrap().issued_at, 0);
+
+    // Re-attest after activity with a strictly newer issued_at → refreshes.
+    let mut d2 = attestation(env, &wallet, &c.attestor);
+    d2.issued_at = 100;
+    c.risk.attest_with_risc0(&wallet, &d2, &seal, &journal);
+    assert_eq!(c.risk.get_attestation(&wallet).unwrap().issued_at, 100);
+
+    // A stale re-attest (not strictly newer) is rejected — anti-replay guard.
+    let mut d3 = attestation(env, &wallet, &c.attestor);
+    d3.issued_at = 100;
+    assert_eq!(
+        c.risk.try_attest_with_risc0(&wallet, &d3, &seal, &journal),
+        Err(Ok(Error::StaleAttestation))
+    );
+}
+
+#[test]
 fn attest_with_risc0_requires_registered_image() {
     let c = setup(false); // image id NOT registered
     let env = &c.env;

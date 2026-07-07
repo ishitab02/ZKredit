@@ -117,9 +117,12 @@ Rule the API follows:
 - **Enrolled wallet** (has a `WalletIdentity` registration): use that wallet's registered
   Poseidon commitment `Poseidon(secret)` — so `get_attestation` resolves the group's shared
   score across the user's wallets.
-- **Standalone wallet** (not enrolled): use `sha256(b"zkredit-subject:" || wallet_ed25519_pubkey)`
-  as a deterministic per-wallet subject id. (It's not a ZK group commitment — standalone
-  wallets don't share scores — but it binds the attestation to that wallet.)
+- **Standalone wallet** (not enrolled): use the wallet's **raw 32-byte ed25519 public key**
+  as the per-wallet subject id — this is what `ml/risc0/prover.py::identity_commitment_for`
+  implements and is therefore the runtime authority. (It's a natural 32-byte identity, not a
+  ZK group commitment — standalone wallets don't share scores — but it binds the attestation
+  to that wallet. Earlier drafts of this doc specified `sha256("zkredit-subject:" || pubkey)`;
+  the raw pubkey was chosen since the field is opaque on-chain and the decoded key is simpler.)
 
 On-chain this field is opaque 32 bytes; the contract only stores it and (for enrolled
 wallets whose commitment maps to a registered group) resolves the group score. So the

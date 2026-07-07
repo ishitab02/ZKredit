@@ -193,7 +193,12 @@ class FullModel:
             max_family = np.zeros(raw.shape[0], dtype=np.float64)
         penalties = self._rule_penalties(raw)
         keys = [
-            (float(main_percentiles[i]), float(mean_family[i]), float(max_family[i]), float(penalties[i]))
+            (
+                float(main_percentiles[i]),
+                float(mean_family[i]),
+                float(max_family[i]),
+                float(penalties[i]),
+            )
             for i in range(raw.shape[0])
         ]
         self._sorted_composite_keys = tuple(sorted(keys))
@@ -378,7 +383,8 @@ class FullModel:
         self._require_fitted()
         if n_features != len(self._engineered_feature_names):
             raise ValueError(
-                f"expected transformed dimension {len(self._engineered_feature_names)}, got {n_features}"
+                f"expected transformed dimension "
+                f"{len(self._engineered_feature_names)}, got {n_features}"
             )
 
         import onnx
@@ -458,7 +464,9 @@ class FullModel:
         model._iforest = bundle["iforest"]
         model._family_forests = bundle.get("family_forests", {})
         model._family_feature_indices = bundle.get("family_feature_indices", {})
-        inferred_dim = getattr(model._scaler, "n_features_in_", model._kmeans.cluster_centers_.shape[1])
+        inferred_dim = getattr(
+            model._scaler, "n_features_in_", model._kmeans.cluster_centers_.shape[1]
+        )
         model._input_feature_names = tuple(
             bundle.get("input_feature_names", tuple(f"f{i}" for i in range(inferred_dim)))
         )
@@ -683,7 +691,7 @@ class FullModel:
         aggregate rule_penalty and the rule-based reason codes."""
         if not self._uses_population_schema:
             zeros = np.zeros(raw.shape[0], dtype=np.float64)
-            return {name: zeros for name in _RULE_REASON_LABELS}
+            return dict.fromkeys(_RULE_REASON_LABELS, zeros)
 
         idx = {name: i for i, name in enumerate(self._input_feature_names)}
         return {
@@ -738,8 +746,12 @@ def _build_reason_codes(
     return [reason for _, reason in candidates[:limit]]
 
 
-def _percentiles(sorted_values: NDArray[np.float64], values: NDArray[np.float64]) -> NDArray[np.float64]:
-    return np.asarray([_percentile(sorted_values, float(value)) for value in values], dtype=np.float64)
+def _percentiles(
+    sorted_values: NDArray[np.float64], values: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    return np.asarray(
+        [_percentile(sorted_values, float(value)) for value in values], dtype=np.float64
+    )
 
 
 def _percentile(sorted_values: NDArray[np.float64], value: float) -> float:

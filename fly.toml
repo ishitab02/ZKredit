@@ -1,0 +1,33 @@
+# fly.toml app configuration file generated for zkredit-api on 2026-07-07T16:17:00+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'zkredit-api'
+primary_region = 'sin'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[deploy]
+  release_command = 'alembic upgrade head'
+
+[env]
+  HORIZON_URL = 'https://horizon.stellar.org'
+  MODEL_DIR = 'model_store'
+  SOROBAN_NETWORK_PASSPHRASE = 'Public Global Stellar Network ; September 2015'
+  SOROBAN_RPC_URL = 'https://mainnet.sorobanrpc.com'
+  STELLAR_NETWORK = 'public'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = 'shared-cpu-2x'
+  memory = '2gb'
+  cpus = 2
+  memory_mb = 2048

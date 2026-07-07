@@ -16,8 +16,11 @@ const POLL_TIMEOUT_MS = 30_000
 const POLL_INTERVAL_MS = 1_500
 
 // Reusable dummy account for read-only simulations (no signature needed).
+// The all-zero "null" account — a valid ed25519 public key format; simulation
+// never needs it to exist on-chain. (An invalid address here throws at module
+// load and blanks the whole app.)
 const SIMULATION_SOURCE = new Account(
-  'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
+  'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
   '0',
 )
 

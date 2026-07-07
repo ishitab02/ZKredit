@@ -20,10 +20,10 @@ import joblib
 import numpy as np
 import onnx
 from numpy.typing import NDArray
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 ModelType = Literal["random_forest", "logistic_regression"]
 

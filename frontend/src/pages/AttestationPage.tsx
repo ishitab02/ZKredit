@@ -1,4 +1,3 @@
-import TryAttestation from "../components/TryAttestation";
 import OnChainAttest from "../components/OnChainAttest";
 
 export default function AttestationPage({
@@ -22,16 +21,15 @@ export default function AttestationPage({
             Attestation
           </p>
           <h1 className="font-display text-display-md font-semibold leading-[0.95] text-fog">
-            Request a wallet attestation
+            Prove your wallet on-chain
           </h1>
           <p className="mt-5 text-base leading-relaxed text-fog-muted md:text-lg">
-            Connect Freighter or paste a Stellar G-address to run the full
-            scoring flow: ingestion, scoring, proof generation, and on-chain
-            attestation
+            Connect Freighter and produce a real, ZK-verified risk attestation:
+            the attestor co-signs, your wallet signs, and the Soroban contract
+            verifies the Groth16 receipt on-chain — your raw history never leaves
+            your side.
           </p>
         </div>
-
-        <TryAttestation walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
 
         <OnChainAttest walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
       </div>

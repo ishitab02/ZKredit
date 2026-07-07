@@ -29,7 +29,7 @@ def score_from_percentile(risk_percentile: float) -> int:
     if not 0.0 <= risk_percentile <= 1.0:
         raise ValueError("risk_percentile must be between 0.0 and 1.0")
     score = SCORE_MAX - risk_percentile * (SCORE_MAX - SCORE_MIN)
-    return int(round(min(SCORE_MAX, max(SCORE_MIN, score))))
+    return round(min(SCORE_MAX, max(SCORE_MIN, score)))
 
 
 def bucket_from_score(score: int) -> RiskBucket:
