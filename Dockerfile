@@ -22,12 +22,15 @@ COPY ml ./ml
 COPY api ./api
 COPY migrations ./migrations
 COPY scripts ./scripts
+# Real trained model artifacts (full.joblib / distilled.joblib / registry.json),
+# trained on the population data. Baked into the image so the API serves real
+# scores. (.dockerignore is configured to include these.)
+COPY model_store ./model_store
 
 RUN pip install --upgrade pip && pip install .
 
-# The trained model artifacts (full.joblib etc.) are gitignored/generated, so
-# they are not in the build context. Generate a PLACEHOLDER model in-image so the
-# API serves end-to-end. Replace with real training on real data (see the script).
+# Safety net: if model_store somehow lacks a trained model, generate a
+# placeholder so the API still boots. No-op when the real model is present.
 RUN python scripts/bootstrap_demo_model.py
 
 EXPOSE 8000

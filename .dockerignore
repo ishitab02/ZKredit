@@ -26,10 +26,10 @@
 **/dist
 **/build
 
-# --- Trained model + ZK circuit artifacts ---
-**/model_store
-**/*.joblib
+# --- ZK circuit artifacts (large, regenerated) ---
 **/*.srs
+# NOTE: model_store/*.joblib are intentionally NOT ignored here — the real
+# trained model is baked into the image (COPY model_store in the Dockerfile).
 
 # --- Rust / Soroban build artifacts ---
 target
