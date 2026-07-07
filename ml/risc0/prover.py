@@ -93,10 +93,10 @@ def prover_available() -> bool:
     from ml.risc0.bento_node import remote_proving_configured
 
     if remote_proving_configured():
-        # A prebuilt host binary (prod image) or cargo (dev) can drive the thin
-        # client; the GPU node does the actual STARK + Groth16 work.
-        return bool(os.environ.get(_ENV_HOST_BIN)) or shutil.which("cargo") is not None
-    return all(shutil.which(tool) is not None for tool in ("r0vm", "cargo", "docker"))
+        host_bin = os.environ.get(_ENV_HOST_BIN)
+        if host_bin:
+            return Path(host_bin).is_file() and os.access(host_bin, os.X_OK)
+        return shutil.which("cargo") is not None
 
 
 def feature_vector_json(selected_vector: NDArray[np.float64]) -> str:
