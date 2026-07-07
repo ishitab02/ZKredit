@@ -63,16 +63,16 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    """In this scenario we need to create an Engine
-    and associate a connection with the context.
+    """Create an Engine and associate a connection with the context.
 
+    Build it through ``ml.data.db.create_engine`` so the same URL normalization
+    (asyncpg scheme, dropped libpq params) and TLS handling used by the app also
+    apply to migrations — otherwise ``alembic upgrade`` against a managed
+    Postgres (Neon/Supabase) would fail on ``sslmode``.
     """
+    from ml.data.db import create_engine
 
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = create_engine(config.get_main_option("sqlalchemy.url"))
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

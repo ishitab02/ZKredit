@@ -20,8 +20,12 @@ primary_region = "iad"
 
 [env]
   MODEL_DIR = "model_store"
-  STELLAR_NETWORK = "testnet"
-  SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org"
+  # MAINNET target. Swap SOROBAN_RPC_URL for your provider's mainnet endpoint
+  # (SDF hosts no free public mainnet Soroban RPC).
+  STELLAR_NETWORK = "public"
+  HORIZON_URL = "https://horizon.stellar.org"
+  SOROBAN_RPC_URL = "https://mainnet.sorobanrpc.com"
+  SOROBAN_NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
 
 [http_service]
   internal_port = 8000
