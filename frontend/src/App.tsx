@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ReactLenis, type LenisRef } from "lenis/react";
 import PageGlow from "./components/PageGlow";
 import Nav from "./components/Nav";
 import Footer from "./components/Footer";
@@ -9,6 +10,11 @@ import { getSiteRoute } from "./lib/navigation";
 export default function App() {
   const [route, setRoute] = useState(() => getSiteRoute());
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const lenisRef = useRef<LenisRef>(null);
+
+  const prefersReduced =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
   // Pink fill on primary buttons follows the pointer (--mx/--my).
   useEffect(() => {
@@ -31,12 +37,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
+    // Jump to top on route change without animating (Lenis if present).
+    const lenis = lenisRef.current?.lenis;
+    if (lenis) lenis.scrollTo(0, { immediate: true });
+    else window.scrollTo({ top: 0, behavior: "auto" });
   }, [route]);
 
   const isAttestation = route === "attestation";
 
-  return (
+  const content = (
     <>
       <a
         href="#main"
@@ -55,5 +64,19 @@ export default function App() {
       </main>
       <Footer route={route} />
     </>
+  );
+
+  // Reduced-motion users get native scrolling; everyone else gets Lenis inertia.
+  // `anchors` makes in-page #links smooth-scroll with a nav-clearing offset.
+  if (prefersReduced) return content;
+
+  return (
+    <ReactLenis
+      root
+      ref={lenisRef}
+      options={{ lerp: 0.09, wheelMultiplier: 1, anchors: { offset: -96 } }}
+    >
+      {content}
+    </ReactLenis>
   );
 }

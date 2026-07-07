@@ -44,3 +44,4 @@ test_snapshots/
 # Local ingest seed data (not committed)
 /data/
 bq_population_180d.csv
+.vercel

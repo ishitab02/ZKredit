@@ -220,12 +220,51 @@ export default function ParticleSphere({ className }: Props) {
       points.scale.setScalar(introScale * breathe * jiggle);
 
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
+      raf = running() ? requestAnimationFrame(tick) : 0;
     };
-    tick();
+
+    let tabVisible = !document.hidden;
+    let onScreen = true;
+    const running = () => tabVisible && onScreen;
+    const start = () => {
+      if (raf === 0 && running()) {
+        clock.getDelta(); // drop the paused gap so dt doesn't spike on resume
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    const stop = () => {
+      if (raf !== 0) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+
+    // Only animate while the canvas is on screen and the tab is focused. A
+    // WebGL rAF that keeps rendering behind the fold steals frames from the
+    // rest of the page and is what makes scrolling feel heavy.
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        onScreen = entry.isIntersecting;
+        if (onScreen) start();
+        else stop();
+      },
+      { threshold: 0 },
+    );
+    io.observe(mount);
+
+    const onVisibility = () => {
+      tabVisible = !document.hidden;
+      if (tabVisible) start();
+      else stop();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    start();
 
     return () => {
-      cancelAnimationFrame(raf);
+      stop();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("resize", onResize);
       mount.removeEventListener("pointermove", onPointerMove);
       mount.removeEventListener("pointerdown", onPointerDown);

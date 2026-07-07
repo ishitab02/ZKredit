@@ -5,11 +5,13 @@ import { EASE } from "../lib/motion";
 import { ATTESTATION_PATH, LANDING_PATH, type SiteRoute } from "../lib/navigation";
 import { connectFreighter } from "../lib/freighter";
 
+// Absolute (root-anchored) hrefs so the section links also work from the
+// attestation page: a click navigates back to the landing page and scrolls.
 const LANDING_LINKS = [
-  { label: "What we do", href: "#about" },
-  { label: "How it works", href: "#how" },
-  { label: "What's proven", href: "#proven" },
-  { label: "Use cases", href: "#use-cases" },
+  { label: "What we do", href: "/#about" },
+  { label: "How it works", href: "/#how" },
+  { label: "What's proven", href: "/#proven" },
+  { label: "Use cases", href: "/#use-cases" },
 ];
 
 function shorten(address: string) {
@@ -28,7 +30,8 @@ export default function Nav({
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const links = route === "landing" ? LANDING_LINKS : [{ label: "Start attestation", href: `${ATTESTATION_PATH}#attestation` }];
+  // Section links show on every route; only the primary CTA is route-dependent.
+  const links = LANDING_LINKS;
 
   async function handleConnect() {
     setConnecting(true);
@@ -72,18 +75,17 @@ export default function Nav({
             <img
               src="/logo.png"
               alt=""
-              className="h-8 w-8 object-contain"
-              width={32}
-              height={32}
+              className="h-10 w-10 object-contain md:h-12 md:w-12"
+              width={48}
+              height={48}
             />
-            <span className="font-display text-lg font-semibold tracking-tight">
+            <span className="font-display text-xl font-semibold tracking-tight md:text-2xl">
               ZKredit
             </span>
           </a>
 
           <ul className="hidden items-center gap-8 md:flex">
-            {route === "landing" &&
-              links.map((l) => (
+            {links.map((l) => (
               <li key={l.href}>
                 <a
                   href={l.href}

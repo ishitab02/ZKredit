@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   getAttestationRecord,
-  getModelInfo,
   getWalletFeatures,
   isValidStellarAddress,
   requestAttestation,
@@ -63,15 +62,9 @@ export default function TryAttestation({
   const [record, setRecord] = useState<AttestationRecordResponse | null>(null);
   const [features, setFeatures] = useState<FeatureSummaryResponse | null>(null);
   const [featuresUnavailable, setFeaturesUnavailable] = useState(false);
-  const [modelInfo, setModelInfo] = useState<ModelInfoResponse | null>(null);
+  const [modelInfo] = useState<ModelInfoResponse | null>(null);
 
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    getModelInfo()
-      .then(setModelInfo)
-      .catch(() => setModelInfo(null));
-  }, []);
 
   // Freighter may already be approved for this origin from a prior session —
   // pick it up silently without prompting, and let the nav button know too.
