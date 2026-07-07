@@ -75,6 +75,7 @@ fn setup<'a>() -> Harness<'a> {
     // Wire the graph exactly as deploy-testnet.sh does.
     risk.set_attestor_registry(&registry_id);
     risk.set_wallet_identity(&wid_id);
+    wid.set_attestor_registry(&registry_id);
     pool.set_risk_attestation(&risk_id);
     registry.authorize(&attestor);
 
@@ -136,7 +137,7 @@ fn linked_wallets_share_group_best_score() {
 
     // The attestor publishes the group's best attestation: VERY_LOW, ZK + KYC.
     let group_best = attestation(env, &wallet_a, &h.attestor, 0, true, true, Some(c.clone()));
-    h.wid.update_group_score(&c, &group_best);
+    h.wid.update_group_score(&h.attestor, &c, &group_best);
 
     // Now BOTH wallets surface the shared best score, not their own.
     assert_eq!(h.risk.get_attestation(&wallet_a).unwrap().risk_bucket, 0);
@@ -144,10 +145,12 @@ fn linked_wallets_share_group_best_score() {
     assert!(h.risk.get_attestation(&wallet_a).unwrap().kyc_verified);
 
     // The lending pool reads through RiskAttestation and prices off the group
-    // score: VERY_LOW = 12000 bps collateral, base 800 APR, −100 for KYC = 700.
+    // score: VERY_LOW = 12000 bps collateral, base 800 APR (ZK-proven). This
+    // group is KYC-verified, so it clears the credit gate and gets real terms;
+    // KYC is the access gate now, not a −100 rate discount.
     let terms = h.pool.get_loan_terms(&wallet_a);
     assert_eq!(terms.collateral_ratio_basis_points, 12000);
-    assert_eq!(terms.apr_basis_points, 700);
+    assert_eq!(terms.apr_basis_points, 800);
 }
 
 /// A wallet with no identity commitment is unaffected by group resolution — it
@@ -170,10 +173,14 @@ fn standalone_wallet_returns_own_score() {
     assert_eq!(got.identity_commitment, None);
     assert!(!got.zk_verified);
 
-    // MEDIUM, hash-anchored (+200 premium), no KYC → 15000 bps collateral, 1700 APR.
+    // Anti-hopping gate in action: this wallet is NOT kyc_verified, so despite a
+    // MEDIUM own-score it gets only thin-file terms (token cap, punitive rate).
+    // Real borrowing capacity requires KYC — a fresh un-KYC'd wallet gains
+    // nothing, which is what makes wallet-hopping pointless.
     let terms = h.pool.get_loan_terms(&wallet);
-    assert_eq!(terms.collateral_ratio_basis_points, 15000);
-    assert_eq!(terms.apr_basis_points, 1700);
+    assert_eq!(terms.max_principal, 100);
+    assert_eq!(terms.collateral_ratio_basis_points, 25000);
+    assert_eq!(terms.apr_basis_points, 3500);
 }
 
 /// Leaving the group drops a wallet back to its own attestation once the group's
@@ -191,6 +198,7 @@ fn leaving_group_restores_own_score() {
     );
     h.wid.register_wallet(&wallet, &c, &Bytes::new(env));
     h.wid.update_group_score(
+        &h.attestor,
         &c,
         &attestation(env, &wallet, &h.attestor, 1, true, false, Some(c.clone())),
     );

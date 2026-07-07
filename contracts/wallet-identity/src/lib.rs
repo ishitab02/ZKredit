@@ -1,7 +1,14 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contract, contractclient, contractimpl, Address, Bytes, BytesN, Env};
 use zkredit_shared::{groth16, AttestationData, DataKey, Error};
+
+/// Minimal cross-contract view of AttestorRegistry, so WalletIdentity can gate
+/// group-score writes to authorized attestors (mirrors RiskAttestation).
+#[contractclient(name = "AttestorRegistryClient")]
+pub trait AttestorRegistryInterface {
+    fn is_attestor(env: Env, attestor: Address) -> bool;
+}
 
 #[contract]
 pub struct WalletIdentity;
@@ -10,6 +17,38 @@ pub struct WalletIdentity;
 impl WalletIdentity {
     pub fn __constructor(env: Env, admin: Address) {
         env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    /// Set the AttestorRegistry contract address. Admin-only. Once set,
+    /// `update_group_score` requires the caller to be a registered attestor.
+    pub fn set_attestor_registry(env: Env, contract_id: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::AttestorRegistry, &contract_id);
+        Ok(())
+    }
+
+    /// Require that `attestor` is registered in the AttestorRegistry and has
+    /// authorized this call. Shared by `update_group_score` (and future
+    /// attestor-gated writes like `bind_kyc`).
+    fn require_registered_attestor(env: &Env, attestor: &Address) -> Result<(), Error> {
+        let registry_id: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::AttestorRegistry)
+            .ok_or(Error::AttestorNotRegistered)?;
+        let registry = AttestorRegistryClient::new(env, &registry_id);
+        if !registry.is_attestor(attestor) {
+            return Err(Error::UnauthorizedAttestor);
+        }
+        attestor.require_auth();
+        Ok(())
     }
 
     /// Register the Groth16 verification key for the Poseidon identity circuit.
@@ -88,12 +127,19 @@ impl WalletIdentity {
     }
 
     /// Update the aggregated group attestation for a commitment.
-    /// In v1 this is a stub used by the RiskAttestation flow.
+    ///
+    /// Attestor-gated (fixes the prior missing-auth bug): `attestor` must be a
+    /// registered attestor in the AttestorRegistry and must authorize the call,
+    /// so an arbitrary caller can no longer overwrite a group's shared score
+    /// (e.g. force VERY_LOW for free good terms, or grief a victim group).
     pub fn update_group_score(
         env: Env,
+        attestor: Address,
         commitment: BytesN<32>,
         attestation: AttestationData,
     ) -> Result<(), Error> {
+        Self::require_registered_attestor(&env, &attestor)?;
+
         let count: u32 = env
             .storage()
             .persistent()
@@ -158,7 +204,23 @@ impl WalletIdentity {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Bytes, BytesN};
+    use soroban_sdk::{contract as sc_contract, contractimpl as sc_contractimpl, symbol_short, Bytes, BytesN};
+
+    // Minimal AttestorRegistry stand-in: only the wired `allowed` attestor passes.
+    #[sc_contract]
+    struct MockRegistry;
+
+    #[sc_contractimpl]
+    impl MockRegistry {
+        pub fn __constructor(env: Env, allowed: Address) {
+            env.storage().instance().set(&symbol_short!("allowed"), &allowed);
+        }
+        pub fn is_attestor(env: Env, attestor: Address) -> bool {
+            let allowed: Address =
+                env.storage().instance().get(&symbol_short!("allowed")).unwrap();
+            attestor == allowed
+        }
+    }
 
     fn commitment(env: &Env, byte: u8) -> BytesN<32> {
         BytesN::from_array(env, &[byte; 32])
@@ -188,18 +250,23 @@ mod tests {
         }
     }
 
-    fn setup() -> (Env, WalletIdentityClient<'static>) {
+    /// Returns the client plus the one attestor address the wired mock registry
+    /// recognizes (any other caller fails the `is_attestor` gate).
+    fn setup() -> (Env, WalletIdentityClient<'static>, Address) {
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let registry_id = env.register(MockRegistry, (attestor.clone(),));
         let id = env.register(WalletIdentity, (admin,));
         let client = WalletIdentityClient::new(&env, &id);
-        (env, client)
+        client.set_attestor_registry(&registry_id);
+        (env, client, attestor)
     }
 
     #[test]
     fn rejects_duplicate_and_conflicting_registration() {
-        let (env, client) = setup();
+        let (env, client, _attestor) = setup();
         let wallet = Address::generate(&env);
         let c1 = commitment(&env, 1);
         let c2 = commitment(&env, 2);
@@ -220,7 +287,7 @@ mod tests {
 
     #[test]
     fn group_score_roundtrips_and_clears_on_last_leave() {
-        let (env, client) = setup();
+        let (env, client, attestor) = setup();
         let w1 = Address::generate(&env);
         let w2 = Address::generate(&env);
         let c = commitment(&env, 7);
@@ -230,7 +297,7 @@ mod tests {
         client.register_wallet(&w2, &c, &np);
 
         let att = attestation(&env, &w1, c.clone());
-        client.update_group_score(&c, &att);
+        client.update_group_score(&attestor, &c, &att);
         assert_eq!(client.get_group_attestation(&c), Some(att.clone()));
 
         // First member leaves: group attestation persists for remaining member.
@@ -244,19 +311,39 @@ mod tests {
 
     #[test]
     fn update_score_requires_existing_members() {
-        let (env, client) = setup();
+        let (env, client, attestor) = setup();
         let empty = commitment(&env, 9);
         let wallet = Address::generate(&env);
         let att = attestation(&env, &wallet, empty.clone());
         assert_eq!(
-            client.try_update_group_score(&empty, &att),
+            client.try_update_group_score(&attestor, &empty, &att),
             Err(Ok(Error::AttestationNotFound))
+        );
+    }
+
+    // Security regression (fixed missing-auth bug): a caller who is NOT a
+    // registered attestor cannot overwrite a group's score.
+    #[test]
+    fn update_group_score_rejects_non_attestor() {
+        let (env, client, attestor) = setup();
+        let wallet = Address::generate(&env);
+        let c = commitment(&env, 3);
+        client.register_wallet(&wallet, &c, &no_proof(&env));
+
+        let att = attestation(&env, &wallet, c.clone());
+        // A real attestor succeeds...
+        client.update_group_score(&attestor, &c, &att);
+        // ...but a stranger is rejected by the registry gate.
+        let stranger = Address::generate(&env);
+        assert_eq!(
+            client.try_update_group_score(&stranger, &c, &att),
+            Err(Ok(Error::UnauthorizedAttestor))
         );
     }
 
     #[test]
     fn leave_without_membership_errors() {
-        let (env, client) = setup();
+        let (env, client, _attestor) = setup();
         let stranger = Address::generate(&env);
         assert_eq!(
             client.try_leave_group(&stranger),
