@@ -33,11 +33,12 @@ class AttestationResponse(BaseModel):
     full_model_hash: str
     distilled_model_hash: str
     zk_verified: bool = Field(
-        description="True only if the distilled inference was verified ON-CHAIN. Not yet "
-        "wired (DG1 + Halo2/Groth16 reconciliation), so currently always False.",
+        description="True only if the distilled inference was verified ON-CHAIN via the "
+        "RISC0 -> Groth16 (BN254) receipt. This off-chain field hash-anchors, so it is False "
+        "here; the co-sign path sets it True on-chain.",
     )
     proof_generated: bool = Field(
-        description="True iff a real EZKL proof was produced off-chain. False = hash-anchor "
+        description="True iff a real proof was produced off-chain. False = hash-anchor "
         "fallback (no proof); proof_hash then commits to the distilled input, not a proof.",
     )
     proof_hash: str = Field(
@@ -82,13 +83,13 @@ class AttestationRecordResponse(BaseModel):
     zk_verified: bool
     attestor: str
     issued_at: int = Field(
-        description="Unix timestamp the API-side submission adapter associated with this attestation.",
+        description="Unix time the API submission adapter set for this attestation.",
     )
     expires_at: int = Field(
-        description="Unix timestamp after which downstream consumers should treat this record as stale.",
+        description="Unix time after which consumers should treat this record as stale.",
     )
     submission_mode: str = Field(
-        description="How the API submission seam handled this write, e.g. local_fallback or soroban_self_attest.",
+        description="How the submission seam handled this write, e.g. local_fallback / soroban.",
     )
     submission_detail: str = Field(
         description="Human-readable explanation of why the adapter chose that submission path.",
@@ -140,9 +141,10 @@ class ModelInfoResponse(BaseModel):
         "the teacher.",
     )
     zk_verified_capability: bool = Field(
-        description="Whether distilled inference can be verified ON-CHAIN today. "
-        "False until DG1 + the Halo2-KZG/Groth16 mismatch are resolved.",
+        description="Whether distilled inference can be verified ON-CHAIN today. True: the "
+        "RISC0 -> Groth16 (BN254) receipt is verified by RiskAttestation on Soroban.",
     )
     proving_system: str = Field(
-        description="What the prover actually emits (EZKL Halo2-KZG over BN254 — NOT Groth16).",
+        description="What the prover emits: a RISC Zero zkVM proof compressed to a "
+        "Groth16 (BN254) receipt, verified on Soroban.",
     )

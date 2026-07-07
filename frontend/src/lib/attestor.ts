@@ -1,47 +1,62 @@
-// Client for the ZKredit attestor service (`infra/attestor_service.py`).
+// Client for the unified ZKredit attestation API (FastAPI, `POST
+// /api/v1/attest/{wallet}/prepare`). This replaces the old standalone
+// `infra/attestor_service.py`, which always served the same committed demo
+// fixture to every wallet. The API path does real per-wallet RISC Zero proving
+// when the prover toolchain is available and honestly falls back to the fixture
+// otherwise (labeled via `submission_mode`).
 //
 // The attestor holds the server-side signing key, so it — not the browser —
-// signs the attestor authorization entry. This client asks it to prepare a
-// co-signed `attest_with_risc0` transaction; the wallet then finishes signing
-// with Freighter and submits (`submitCosignedAttestation` in contracts/rpc).
+// signs the attestor authorization entry; this returns the partial XDR the
+// wallet then finishes signing with Freighter (`submitCosignedAttestation`).
 
-const ATTESTOR_URL =
-  import.meta.env.VITE_ATTESTOR_URL ?? 'http://127.0.0.1:8790'
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
 export interface PreparedAttestation {
   /** Base-64 tx envelope with the attestor auth entry signed; wallet signs the envelope. */
   partial_xdr: string
-  network_passphrase: string
-  contract_id: string
-  attestor: string
   /** Proven journal fields (for display before the tx lands). */
   risk_bucket: number
-  confidence_bps: number
-  identity_commitment: string
+  confidence: number
   distilled_model_hash: string
+  /** "live_cosign" (real per-wallet receipt) or "demo_fixture_cosign" (honest fallback). */
+  submission_mode: string
+  submission_detail: string
 }
 
 /**
- * Ask the attestor service to score + co-sign an attestation for `wallet`.
- * Returns the partial XDR the wallet must finish signing. Throws on failure.
+ * Ask the API to score + co-sign an attestation for `wallet`, returning the
+ * partial XDR the wallet must finish signing. Establishes the session cookie
+ * (from a Freighter connect) that gates the paid endpoint first. Throws on
+ * failure.
  */
 export async function prepareAttestation(wallet: string): Promise<PreparedAttestation> {
-  let res: Response
+  // 1. Establish the session cookie that gates /attest/* (rate-limited + bound
+  //    to this wallet). `credentials: 'include'` so the cookie is stored/sent.
   try {
-    res = await fetch(`${ATTESTOR_URL}/prepare`, {
+    await fetch(`${API_URL}/api/v1/auth/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet }),
+      credentials: 'include',
+      body: JSON.stringify({ stellar_address: wallet }),
     })
   } catch {
-    throw new Error(
-      `Could not reach the attestor service at ${ATTESTOR_URL}. Start it with ` +
-        `\`python3 infra/attestor_service.py\`.`,
-    )
+    throw new Error(`Could not reach the ZKredit API at ${API_URL}.`)
+  }
+
+  // 2. Score + co-sign via the unified endpoint.
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}/api/v1/attest/${wallet}/prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    })
+  } catch {
+    throw new Error(`Could not reach the ZKredit API at ${API_URL}.`)
   }
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null
-    throw new Error(body?.error || `Attestor request failed (${res.status})`)
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail || `Attestation request failed (${res.status})`)
   }
   return res.json() as Promise<PreparedAttestation>
 }

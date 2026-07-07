@@ -147,8 +147,8 @@
     <ul>
       <li><b>On-chain:</b> risk bucket (u8), confidence, model hashes, proof hash, attestor, timestamp. No raw wallet data ever.</li>
       <li><b>Credit score (300–850)</b> is an off-chain display value. It is <b>not</b> anchored on-chain and <b>not</b> ZK-proven.</li>
-      <li><b>ZK status:</b> proof generation runs off-chain; on-chain Groth16 verification is not wired yet, so <code>zk_verified = false</code>.</li>
-      <li><b>Proving system</b> is Halo2-KZG (BN254) via EZKL — <b>not</b> Groth16 as the original spec assumed.</li>
+      <li><b>ZK status:</b> proving runs off-chain; on-chain Groth16 (BN254) verification is live (<code>attest_with_risc0</code>), so a co-signed attestation lands with <code>zk_verified = true</code>.</li>
+      <li><b>Proving system</b> is the RISC Zero zkVM compressed to a Groth16 (BN254) receipt, verified on Soroban.</li>
     </ul>
   </section>
 </main>

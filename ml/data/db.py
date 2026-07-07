@@ -25,6 +25,11 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 async def init_db(engine: AsyncEngine) -> None:
-    """Create cache tables if they do not exist. Idempotent."""
+    """Create all tables from metadata. Idempotent.
+
+    Production schema is managed by Alembic (``alembic upgrade head``); this
+    ``create_all`` helper is for tests and quick local setup only — it is no
+    longer called on app boot (see ``api.deps.setup_state``).
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

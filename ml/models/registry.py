@@ -1,14 +1,16 @@
-"""Loads trained model + ZK circuit artifacts from disk (the allowed singleton).
+"""Loads trained model artifacts from disk (the allowed singleton).
 
 Layout under ``model_dir`` (produced by ``ml.models.train``):
 
     full.joblib            full XGBoost+calibration+iforest bundle
     full.onnx              full model ONNX (auditability)
-    distilled.joblib       distilled logreg
+    distilled.joblib       distilled model
     distilled_meta.json    selected feature indices/names + agreement
-    zk/distilled.onnx      distilled ONNX (EZKL input)
-    zk/{settings.json,model.compiled,kzg.srs,vk.key,pk.key}   circuit artifacts
+    zk/distilled.onnx      distilled ONNX (RISC0 guest export input)
     registry.json          hashes, schema version, top_k
+
+The on-chain ZK path is RISC Zero (see ``ml/risc0`` / ``ml.models.risc0_export``),
+not the removed EZKL circuit — nothing here loads circuit artifacts anymore.
 """
 
 from __future__ import annotations
@@ -21,7 +23,6 @@ from pathlib import Path
 from ml.config import get_settings
 from ml.models.distill import DistillationResult
 from ml.models.full import FullModel
-from ml.zk.ezkl_pipeline import CircuitArtifacts
 
 
 @dataclass
@@ -30,7 +31,6 @@ class ModelArtifacts:
 
     full: FullModel
     distillation: DistillationResult
-    circuit: CircuitArtifacts | None  # None => no ZK proof (hash-anchor only)
     full_model_hash: str
     distilled_model_hash: str
     feature_schema_version: str
@@ -39,10 +39,6 @@ class ModelArtifacts:
     distilled_within_one: float
     distilled_top_k: int
     distilled_feature_space: str
-
-    @property
-    def has_circuit(self) -> bool:
-        return self.circuit is not None
 
 
 def model_paths(model_dir: str | Path) -> dict[str, Path]:
@@ -71,20 +67,16 @@ def load_artifacts(model_dir: str | Path) -> ModelArtifacts:
     full = FullModel.load(paths["full"])
     distillation = DistillationResult.load(paths["distilled"], paths["distilled_meta"])
 
-    circuit: CircuitArtifacts | None = None
-    settings = paths["zk_dir"] / "settings.json"
-    if paths["distilled_onnx"].exists() and settings.exists():
-        circuit = CircuitArtifacts.in_dir(paths["zk_dir"], paths["distilled_onnx"])
-
     registry = json.loads(paths["registry"].read_text())
     return ModelArtifacts(
         full=full,
         distillation=distillation,
-        circuit=circuit,
         full_model_hash=registry["full_model_hash"],
         distilled_model_hash=registry["distilled_model_hash"],
         feature_schema_version=registry["feature_schema_version"],
-        distilled_model_type=str(registry.get("distilled_model_type", distillation.model.model_type)),
+        distilled_model_type=str(
+            registry.get("distilled_model_type", distillation.model.model_type)
+        ),
         distilled_agreement=float(registry.get("distilled_agreement", distillation.agreement)),
         distilled_within_one=float(registry.get("distilled_within_one", distillation.within_one)),
         distilled_top_k=int(registry.get("top_k", len(distillation.feature_names))),

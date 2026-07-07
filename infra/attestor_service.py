@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Minimal ZKredit attestor service (demo).
+"""Minimal ZKredit attestor service — DEV FIXTURE ONLY (retired as default).
+
+NOTE (Phase 1.7): the frontend no longer calls this service. It always served
+the same committed demo receipt to every wallet, which misrepresented per-wallet
+results (Global Rule #2). The browser now calls the unified FastAPI endpoint
+`POST /api/v1/attest/{wallet}/prepare` (see `frontend/src/lib/attestor.ts`),
+which does real per-wallet RISC Zero proving and honestly labels fixture
+fallbacks. Keep this only as a standalone local fixture for quick manual pokes;
+do not wire it into the frontend.
 
 The browser cannot hold the attestor secret key, so the attestor role runs
 server-side. This tiny stdlib HTTP service exposes one endpoint that:
@@ -93,12 +101,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_OPTIONS(self) -> None:  # noqa: N802 - http.server API
+    def do_OPTIONS(self) -> None:
         self.send_response(204)
         self._cors()
         self.end_headers()
 
-    def do_POST(self) -> None:  # noqa: N802 - http.server API
+    def do_POST(self) -> None:
         if self.path.rstrip("/") != "/prepare":
             self._json(404, {"error": "not found"})
             return
@@ -106,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             req = json.loads(self.rfile.read(length) or b"{}")
             wallet = str(req["wallet"]).strip()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._json(400, {"error": f"bad request: {e}"})
             return
 
@@ -149,7 +157,7 @@ class Handler(BaseHTTPRequestHandler):
                 rpc_url=RPC,
                 network_passphrase=PASSPHRASE,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._json(502, {"error": f"co-sign build failed: {e}"})
             return
 

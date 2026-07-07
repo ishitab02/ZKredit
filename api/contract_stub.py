@@ -14,14 +14,18 @@ its local mirrored record until the auth flow or contract surface changes.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from ml.config import get_settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 @dataclass(frozen=True)
@@ -75,7 +79,6 @@ class PreparedSubmissionResult:
     submission_detail: str
 
 
-_STORE: dict[str, AttestationRecord] = {}
 _STUB_ATTESTOR = "GSTUB_ATTESTOR_ADDRESS_PROVISIONAL_NOT_A_REAL_ACCOUNT_000000"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BINDINGS_ROOT = _REPO_ROOT / "contracts" / "bindings" / "python"
@@ -96,14 +99,24 @@ except ImportError:  # pragma: no cover - optional runtime path.
     submit_attestation_onchain = None
 
 
-def submit_attestation(params: AttestationParams) -> SubmissionResult:
-    """Submit an attestation through the best available honest path."""
+async def submit_attestation(
+    params: AttestationParams,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> SubmissionResult:
+    """Submit an attestation through the best available honest path.
+
+    The resulting record is appended to the Postgres ``attestations`` history
+    table (via ``session_factory``) so it survives restarts and is consistent
+    across worker processes — replacing the old in-memory module dict.
+    """
     if _can_submit_onchain(params):
-        return _submit_attestation_onchain(params)
-    return _submit_attestation_locally(
-        params,
-        detail=_fallback_reason(params),
-    )
+        # The on-chain path makes a blocking Soroban RPC call; keep the event
+        # loop free by running it in a worker thread.
+        result = await asyncio.to_thread(_submit_attestation_onchain, params)
+    else:
+        result = _submit_attestation_locally(params, detail=_fallback_reason(params))
+    await _persist_attestation(session_factory, params, result)
+    return result
 
 
 def prepare_attestation_submission(
@@ -192,15 +205,6 @@ def _submit_attestation_locally(
         f"{params.proof_hash}{datetime.now(UTC).isoformat()}"
     )
     tx_hash = hashlib.sha256(payload.encode()).hexdigest()
-    _STORE[params.stellar_address] = AttestationRecord(
-        params=params,
-        tx_hash=tx_hash,
-        attestor=_resolve_attestor_address(),
-        issued_at=issued_at,
-        expires_at=expires_at,
-        submission_mode="local_fallback",
-        submission_detail=detail,
-    )
     return SubmissionResult(
         tx_hash=tx_hash,
         attestor=_resolve_attestor_address(),
@@ -235,18 +239,6 @@ def _submit_attestation_onchain(params: AttestationParams) -> SubmissionResult:
         attestor_seed=settings.attestor_seed or "",
         rpc_url=settings.soroban_rpc_url,
         network_passphrase=settings.soroban_network_passphrase,
-    )
-    _STORE[params.stellar_address] = AttestationRecord(
-        params=params,
-        tx_hash=tx_hash,
-        attestor=attestor_address,
-        issued_at=issued_at,
-        expires_at=expires_at,
-        submission_mode="soroban_self_attest",
-        submission_detail=(
-            "submitted through Soroban helper with attestor-auth and wallet-auth "
-            "collapsing to the same address"
-        ),
     )
     return SubmissionResult(
         tx_hash=tx_hash,
@@ -322,6 +314,71 @@ def _read_risc0_fixture(filename: str) -> bytes:
     return path.read_bytes()
 
 
-def read_attestation(stellar_address: str) -> AttestationRecord | None:
-    """Read a previously submitted attestation, or None."""
-    return _STORE.get(stellar_address)
+async def _persist_attestation(
+    session_factory: async_sessionmaker[AsyncSession],
+    params: AttestationParams,
+    result: SubmissionResult,
+) -> None:
+    """Append one attestation row to the Postgres history table."""
+    from ml.data.models import Attestation
+
+    async with session_factory() as session:
+        session.add(
+            Attestation(
+                stellar_address=params.stellar_address,
+                risk_bucket=params.risk_bucket,
+                confidence_bps=params.confidence_bps,
+                full_model_hash=params.full_model_hash,
+                distilled_model_hash=params.distilled_model_hash,
+                proof_hash=params.proof_hash,
+                zk_verified=params.zk_verified,
+                tx_hash=result.tx_hash,
+                attestor=result.attestor,
+                issued_at=result.issued_at,
+                expires_at=result.expires_at,
+                submission_mode=result.submission_mode,
+                submission_detail=result.submission_detail,
+            )
+        )
+        await session.commit()
+
+
+async def read_attestation(
+    stellar_address: str,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AttestationRecord | None:
+    """Read the latest attestation for an address from the history table, or None."""
+    from sqlalchemy import select
+
+    from ml.data.models import Attestation
+
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                select(Attestation)
+                .where(Attestation.stellar_address == stellar_address)
+                .order_by(Attestation.created_at.desc(), Attestation.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    if row is None:
+        return None
+    return AttestationRecord(
+        params=AttestationParams(
+            stellar_address=row.stellar_address,
+            risk_bucket=row.risk_bucket,
+            confidence_bps=row.confidence_bps,
+            full_model_hash=row.full_model_hash,
+            distilled_model_hash=row.distilled_model_hash,
+            proof_hash=row.proof_hash,
+            zk_verified=row.zk_verified,
+        ),
+        tx_hash=row.tx_hash,
+        attestor=row.attestor,
+        issued_at=row.issued_at,
+        expires_at=row.expires_at,
+        submission_mode=row.submission_mode,
+        submission_detail=row.submission_detail,
+        created_at=row.created_at,
+    )

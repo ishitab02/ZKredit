@@ -1,0 +1,35 @@
+# Fly.io deployment for the ZKredit API (1.5). Frontend stays on Vercel.
+#
+# Secrets (never in this file — set via `fly secrets set`):
+#   ATTESTOR_SEED, ADMIN_SEED, SESSION_SECRET, and any Phase 2 secret
+#   (e.g. BOUNDLESS_EVM_PRIVATE_KEY). DATABASE_URL / REDIS_URL come from the
+#   attached Fly Postgres / Redis (Upstash) apps.
+#
+# Non-secret config (CORS origins, rate limits, contract IDs) can live in [env]
+# below or be set with `fly secrets set` too.
+
+app = "zkredit-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Apply DB migrations before new machines take traffic.
+  release_command = "alembic upgrade head"
+
+[env]
+  MODEL_DIR = "model_store"
+  STELLAR_NETWORK = "testnet"
+  SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

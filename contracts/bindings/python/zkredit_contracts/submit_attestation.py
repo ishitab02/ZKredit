@@ -1,8 +1,9 @@
 """Submit ZKredit attestations to the RiskAttestation contract.
 
-The helper uses the hash-anchored path (``attest_with_hash``) as the default,
-because the on-chain Groth16 verifier is not guaranteed to be available in
-Soroban testnet at the time of writing (DG1 fallback).
+The helper's ``attest_with_hash`` path hash-anchors without an on-chain proof.
+The RISC Zero -> Groth16 (BN254) verifier IS live on Soroban
+(``attest_with_risc0``, validated on testnet; BN254 host functions are native on
+mainnet since Protocol 25) — use the co-sign path below for real ZK attestations.
 
 Interactive co-sign path (``build_risc0_attestation_cosigned_xdr``):
 ``attest_with_risc0`` (and the other ``attest_*`` fns) require BOTH
@@ -18,7 +19,6 @@ authorization entry server-side. The returned XDR is handed to the wallet
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from stellar_sdk import Address as StellarAddress
 from stellar_sdk import Keypair, SorobanServer, TransactionBuilder, scval, xdr
@@ -45,7 +45,7 @@ class AttestationParams:
     issued_at: int
     expires_at: int
     kyc_verified: bool = False
-    identity_commitment: Optional[bytes] = None
+    identity_commitment: bytes | None = None
 
     def __post_init__(self) -> None:
         for name, value, length in (

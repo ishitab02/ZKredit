@@ -6,9 +6,12 @@ import asyncio
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from api.auth import SESSION_COOKIE_NAME, issue_session, verify_session
 from api.contract_stub import (
     AttestationParams,
     PreparedSubmissionResult,
@@ -16,7 +19,8 @@ from api.contract_stub import (
     read_attestation,
     submit_attestation,
 )
-from api.deps import get_artifacts, get_session_factory
+from api.deps import get_artifacts, get_redis, get_session_factory
+from api.rate_limit import enforce_attest_limits
 from api.schemas import (
     AttestationPrepareResponse,
     AttestationRecordResponse,
@@ -26,8 +30,9 @@ from api.schemas import (
     ReasonCodeOut,
     TopFeatureOut,
 )
-from api.validation import StellarAddressPath
+from api.validation import STELLAR_ADDRESS_PATTERN, StellarAddressPath
 from ml.attest import attest
+from ml.config import get_settings
 from ml.features.base import WalletData
 from ml.features.population_v1 import POPULATION_FEATURE_NAMES, extract_population_features
 from ml.features.store import SCHEMA_VERSION, load_wallet_data
@@ -42,9 +47,61 @@ router = APIRouter(prefix="/api/v1", tags=["attestation"])
 
 SessionFactoryDep = Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)]
 ArtifactsDep = Annotated[ModelArtifacts, Depends(get_artifacts)]
+RedisDep = Annotated[aioredis.Redis, Depends(get_redis)]
 
 
-@router.post("/attest/{stellar_address}", response_model=AttestationResponse)
+class SessionRequest(BaseModel):
+    """Establish a session for a connected wallet address."""
+
+    stellar_address: str = Field(pattern=STELLAR_ADDRESS_PATTERN)
+
+
+@router.post("/auth/session", tags=["auth"])
+async def create_session(payload: SessionRequest, response: Response) -> dict[str, str]:
+    """Issue a signed session cookie for a wallet the browser has connected.
+
+    The frontend calls this right after a Freighter connect; the cookie then
+    gates the paid ``/attest/{address}/*`` endpoints (see ``_attest_guard``).
+    """
+    settings = get_settings()
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        issue_session(payload.stellar_address, settings),
+        max_age=settings.session_ttl_seconds,
+        httponly=True,
+        samesite="none",
+        secure=True,
+    )
+    return {"status": "ok", "stellar_address": payload.stellar_address}
+
+
+async def _attest_guard(
+    request: Request,
+    stellar_address: StellarAddressPath,
+    redis: RedisDep,
+) -> None:
+    """Gate the paid ``/attest/*`` endpoints: session cookie + rate limits.
+
+    Requires a valid session cookie bound to the same address being attested
+    (established via ``/auth/session`` after a wallet connect), then enforces the
+    per-address / per-IP rate limits before any expensive proving runs.
+    """
+    settings = get_settings()
+    session_address = verify_session(request.cookies.get(SESSION_COOKIE_NAME), settings)
+    if session_address != stellar_address:
+        raise HTTPException(
+            status_code=401,
+            detail="Connect your wallet first: no valid session for this address.",
+        )
+    client_ip = request.client.host if request.client else "unknown"
+    await enforce_attest_limits(redis, stellar_address, client_ip, settings)
+
+
+@router.post(
+    "/attest/{stellar_address}",
+    response_model=AttestationResponse,
+    dependencies=[Depends(_attest_guard)],
+)
 async def attest_wallet(
     stellar_address: StellarAddressPath,
     session_factory: SessionFactoryDep,
@@ -54,7 +111,7 @@ async def attest_wallet(
     result = await attest(stellar_address, session_factory=session_factory, artifacts=artifacts)
     params = _to_params(result)
     try:
-        submission = submit_attestation(params)
+        submission = await submit_attestation(params, session_factory)
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
     except Exception as err:
@@ -65,7 +122,11 @@ async def attest_wallet(
     return _to_attestation_response(result, submission.tx_hash)
 
 
-@router.post("/attest/{stellar_address}/prepare", response_model=AttestationPrepareResponse)
+@router.post(
+    "/attest/{stellar_address}/prepare",
+    response_model=AttestationPrepareResponse,
+    dependencies=[Depends(_attest_guard)],
+)
 async def prepare_attestation(
     stellar_address: StellarAddressPath,
     session_factory: SessionFactoryDep,
@@ -118,9 +179,12 @@ async def _try_live_receipt(
 
 
 @router.get("/attestation/{stellar_address}", response_model=AttestationRecordResponse)
-async def get_attestation(stellar_address: StellarAddressPath) -> AttestationRecordResponse:
+async def get_attestation(
+    stellar_address: StellarAddressPath,
+    session_factory: SessionFactoryDep,
+) -> AttestationRecordResponse:
     """Read the latest record available through the API submission seam."""
-    record = read_attestation(stellar_address)
+    record = await read_attestation(stellar_address, session_factory)
     if record is None:
         raise HTTPException(status_code=404, detail="No attestation for this address")
     return AttestationRecordResponse(
@@ -175,9 +239,12 @@ async def model_info(artifacts: ArtifactsDep) -> ModelInfoResponse:
         distilled_feature_space=artifacts.distilled_feature_space,
         distilled_exact_fidelity=artifacts.distilled_agreement,
         distilled_within_one_fidelity=artifacts.distilled_within_one,
-        # Honest: on-chain ZK verification is not wired yet (DG1 + Halo2/Groth16).
-        zk_verified_capability=False,
-        proving_system="halo2-kzg-bn254 (EZKL); NOT groth16",
+        # On-chain ZK verification is live: the RISC Zero zkVM proves the
+        # distilled model, compresses to a Groth16 (BN254) receipt, and
+        # RiskAttestation.attest_with_risc0 verifies it on Soroban (validated on
+        # testnet). Groth16/BN254 is native on mainnet since Protocol 25.
+        zk_verified_capability=True,
+        proving_system="risc0-zkvm -> groth16-bn254 (Soroban)",
     )
 
 
@@ -186,7 +253,7 @@ def _to_params(result: AttestationResult) -> AttestationParams:
     return AttestationParams(
         stellar_address=result.stellar_address,
         risk_bucket=int(result.risk_bucket),
-        confidence_bps=int(round(result.confidence * 10000)),
+        confidence_bps=round(result.confidence * 10000),
         full_model_hash=result.full_model_hash,
         distilled_model_hash=result.distilled_model_hash,
         proof_hash=result.proof_hash,

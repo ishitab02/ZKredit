@@ -1,11 +1,4 @@
 import OnChainAttest from "../components/OnChainAttest";
-// The API-backed scoring form (TryAttestation) needs the FastAPI + ML backend
-// running on :8000 (see scripts/run_api_local.sh). It is disabled by default so
-// the page works with just the attestor service + Freighter. Re-enable by
-// setting VITE_ENABLE_API_SCORING=true once the backend is up.
-import TryAttestation from "../components/TryAttestation";
-
-const API_SCORING = import.meta.env.VITE_ENABLE_API_SCORING === "true";
 
 export default function AttestationPage({
   walletAddress,
@@ -39,10 +32,6 @@ export default function AttestationPage({
         </div>
 
         <OnChainAttest walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
-
-        {API_SCORING && (
-          <TryAttestation walletAddress={walletAddress} onWalletConnected={onWalletConnected} />
-        )}
       </div>
     </section>
   );

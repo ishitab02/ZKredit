@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://zkredit:zkredit@localhost:5432/zkredit"
     redis_url: str = "redis://localhost:6379"
 
+    # CORS: explicit allowlist replaces the old wildcard. ``cors_allowed_origins``
+    # is a comma-separated list of exact origins (localhost dev + the deployed
+    # Vercel prod URL); ``cors_allow_origin_regex`` (set in prod) matches Vercel
+    # preview deployments, e.g. https://<project>-<hash>-<team>.vercel.app.
+    cors_allowed_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+    )
+    cors_allow_origin_regex: str | None = None
+
     # BigQuery (DG3)
     google_application_credentials: str | None = None
     bigquery_project: str | None = None
@@ -56,6 +65,21 @@ class Settings(BaseSettings):
     attestor_address: str | None = None
     attestor_seed: str | None = None
     attestation_ttl_seconds: int = 30 * 24 * 60 * 60
+
+    # Abuse control on the paid-proving endpoints (1.4). Proving costs real
+    # compute/money, so /attest/* is rate-limited (Redis) and gated on a session
+    # cookie established after a wallet connect.
+    attest_rate_per_address_24h: int = 3
+    attest_rate_per_ip_hour: int = 20
+    # HMAC key for signing the session cookie. MUST be set in production (fly
+    # secrets); the insecure fallback exists only so local dev/tests run.
+    session_secret: str | None = None
+    session_ttl_seconds: int = 24 * 60 * 60
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse ``cors_allowed_origins`` into a clean list of exact origins."""
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
 
 @lru_cache

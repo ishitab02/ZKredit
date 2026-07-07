@@ -8,9 +8,10 @@ struct (architecture.md §5.1, owned by Soham). The richer off-chain-only fields
 API/dashboard and are not anchored on-chain.
 
 HONESTY (Global Rule #2): ``zk_verified`` is True only when the distilled
-inference was verified ON-CHAIN. The off-chain pipeline generates a proof and a
-proof hash; on-chain verification is the contract's job and currently gated by
-DG1 + the Halo2/Groth16 reconciliation. Default is therefore False.
+inference was verified ON-CHAIN. This off-chain pipeline hash-anchors a
+commitment to the distilled input; the real ZK proof is a RISC Zero zkVM ->
+Groth16 (BN254) receipt, produced in the attestor/route layer and verified on
+Soroban by ``RiskAttestation.attest_with_risc0``. Default here is therefore False.
 """
 
 from __future__ import annotations
@@ -63,7 +64,7 @@ class AttestationResult:
     full_model_hash: str  # hex sha256 of the full (unsupervised composite) model.
     distilled_model_hash: str  # hex sha256 of the distilled student model.
     zk_verified: bool  # True only when distilled inference is verified on-chain.
-    proof: bytes | None  # EZKL proof bytes, or None when no proof was generated.
+    proof: bytes | None  # proof bytes when a proof was generated, else None (hash-anchor).
     proof_generated: bool  # True iff a real proof was produced (else hash-anchor fallback).
     proof_hash: str  # sha256 of the proof when proof_generated, else of the distilled input.
     public_inputs: list[str]  # public circuit outputs a verifier checks; empty when no proof.

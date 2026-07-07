@@ -171,9 +171,9 @@ def build_guest_artifact(artifacts: ModelArtifacts) -> dict[str, Any]:
             "robust_scale": [float(v) for v in scaler.scale_.tolist()],
         },
         "forest": {
-            "n_classes": int(len(clf.classes_)),
+            "n_classes": len(clf.classes_),
             "classes": [int(v) for v in clf.classes_.tolist()],
-            "n_estimators": int(len(clf.estimators_)),
+            "n_estimators": len(clf.estimators_),
             "max_depth": int(max(est.tree_.max_depth for est in clf.estimators_)),
             "trees": [_export_tree(est.tree_) for est in clf.estimators_],
         },

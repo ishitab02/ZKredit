@@ -28,7 +28,7 @@ from ml.features.store import SCHEMA_VERSION
 from ml.models.distill import DEFAULT_TOP_K, distill
 from ml.models.full import FullModel
 from ml.models.registry import model_paths
-from ml.zk import ezkl_pipeline
+
 
 def train(
     model_dir: str | Path,
@@ -38,7 +38,12 @@ def train(
     top_k: int = DEFAULT_TOP_K,
     build_zk: bool = True,
 ) -> dict:
-    """Train full + distilled models, optionally build the EZKL circuit, persist all."""
+    """Train full + distilled models and persist all.
+
+    ``build_zk`` is retained for signature/CLI compatibility but is now a no-op:
+    the EZKL circuit build was removed with the RISC Zero pivot. The on-chain ZK
+    path is RISC0 (``ml.models.risc0_export`` / ``ml/risc0``), exported separately.
+    """
     paths = model_paths(model_dir)
     paths["base"].mkdir(parents=True, exist_ok=True)
     paths["zk_dir"].mkdir(parents=True, exist_ok=True)
@@ -60,15 +65,10 @@ def train(
 
     distillation = distill(full, x, names, top_k=top_k)
     distillation.save(paths["distilled"], paths["distilled_meta"])
-    onnx_path = distillation.model.to_onnx(paths["distilled_onnx"])
-
-    if build_zk:
-        student_matrix = transformed if distillation.feature_space == "transformed" else x
-        calibration_row = student_matrix[0, list(distillation.feature_indices)]
-        _, stats = ezkl_pipeline.build_circuit(onnx_path, calibration_row, paths["zk_dir"])
-        zk_info = {"constraints": stats.num_rows, "logrows": stats.logrows}
-    else:
-        zk_info = {"constraints": None, "logrows": None}
+    # Writes zk/distilled.onnx (audit + RISC0-export input). The EZKL circuit
+    # build that used to follow was removed with the RISC Zero pivot.
+    distillation.model.to_onnx(paths["distilled_onnx"])
+    zk_info = {"constraints": None, "logrows": None}
 
     registry = {
         "full_model_hash": full.model_hash(),
