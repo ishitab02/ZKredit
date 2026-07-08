@@ -47,3 +47,21 @@ def test_prove_wallet_raises_when_toolchain_unavailable(
     monkeypatch.setattr(prover, "prover_available", lambda: False)
     with pytest.raises(prover.Risc0ProverUnavailableError):
         prover.prove_wallet(np.zeros(30, dtype=np.float64), "G" + "A" * 55)
+
+
+def test_static_endpoint_unreachable_falls_back_fast() -> None:
+    """A powered-off Bento box degrades to the fixture in seconds, not minutes.
+
+    ``static`` prod terminates the GPU node when idle (no-standing-cost rule), so
+    the prove path must fail fast on a dead endpoint. Port 9 (discard) refuses
+    instantly; the raised type is what api/routes/v1.py treats as a clean fixture
+    fallback rather than a 500.
+    """
+    import time
+
+    from ml.risc0.bento_node import _assert_static_endpoint_reachable
+
+    start = time.monotonic()
+    with pytest.raises(prover.Risc0ProverUnavailableError):
+        _assert_static_endpoint_reachable("http://127.0.0.1:9")
+    assert time.monotonic() - start < 5.0

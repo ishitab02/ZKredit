@@ -322,12 +322,49 @@ def proving_endpoint() -> Iterator[dict[str, str]]:
         url = os.environ.get("BONSAI_API_URL")
         if not url:
             raise BentoNodeError("bento_strategy=static but BONSAI_API_URL is unset")
+        # Fast reachability pre-flight. In static prod the GPU box is powered on
+        # by hand and terminated when idle (E2E bills a *terminated* node at $0
+        # but a powered-off one keeps billing — so "off" means terminated), to
+        # respect the no-standing-cost constraint. When it's down, fail fast with
+        # Risc0ProverUnavailableError so the co-sign path degrades to the honest
+        # committed fixture in seconds (api/routes/v1.py:_try_live_receipt) rather
+        # than blocking each request on the ~15min host/prover timeout against a
+        # dead endpoint.
+        _assert_static_endpoint_reachable(url)
         yield {"BONSAI_API_URL": url, "BONSAI_API_KEY": os.environ.get("BONSAI_API_KEY", "zkredit")}
     elif strategy in ("e2e_stop", "e2e_recreate"):
         with _MANAGER.session() as env:
             yield env
     else:
         raise BentoNodeError(f"unknown bento_strategy {strategy!r}")
+
+
+_STATIC_HEALTH_TIMEOUT_S = 5.0
+
+
+def _assert_static_endpoint_reachable(url: str) -> None:
+    """Raise ``Risc0ProverUnavailableError`` unless Bento answers ``/health`` fast.
+
+    Keeps a powered-off box from turning every attest into a multi-minute hang:
+    the caller (:func:`ml.risc0.prover.prove_wallet`) lets this propagate and the
+    route treats it as a clean, non-error fixture fallback. Imported lazily to
+    avoid a bento_node <-> prover import cycle.
+    """
+    from ml.risc0.prover import Risc0ProverUnavailableError
+
+    health = f"{url.rstrip('/')}/health"
+    try:
+        resp = httpx.get(health, timeout=_STATIC_HEALTH_TIMEOUT_S)
+    except httpx.HTTPError as err:
+        raise Risc0ProverUnavailableError(
+            f"Bento endpoint {url} is unreachable ({err}); using the committed "
+            "fixture. Power on the GPU proving node to serve live per-wallet proofs."
+        ) from err
+    if resp.status_code != 200:
+        raise Risc0ProverUnavailableError(
+            f"Bento endpoint {url} is unhealthy (HTTP {resp.status_code}); using "
+            "the committed fixture."
+        )
 
 
 def remote_proving_configured() -> bool:
