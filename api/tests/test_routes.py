@@ -220,9 +220,12 @@ async def test_prepare_route_falls_back_to_fixture(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(v1, "load_wallet_data", _fake_load)
     monkeypatch.setattr(v1, "prepare_attestation_submission", _fake_prepare)
 
-    body = await v1.prepare_attestation(ADDRESS, object(), load_artifacts("model_store"))
+    body, mode = await v1._build_prepared_attestation(
+        ADDRESS, object(), load_artifacts("model_store")
+    )
     assert body.partial_xdr == "AAAA"
     assert body.submission_mode == "demo_fixture_cosign"
+    assert mode == "demo_fixture_cosign"
     assert body.risk_bucket == 1
     assert body.credit_score == 710
     # Toolchain absent: no per-wallet seal/journal was passed to the builder.
@@ -261,9 +264,75 @@ async def test_prepare_route_uses_live_receipt(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(v1, "prove_wallet", _fake_prove)
     monkeypatch.setattr(v1, "prepare_attestation_submission", _fake_prepare)
 
-    body = await v1.prepare_attestation(ADDRESS, object(), load_artifacts("model_store"))
+    body, mode = await v1._build_prepared_attestation(
+        ADDRESS, object(), load_artifacts("model_store")
+    )
     assert body.partial_xdr == "BBBB"
     assert body.submission_mode == "live_cosign"
+    assert mode == "live_cosign"
+
+
+@pytest.mark.asyncio
+async def test_prepare_enqueues_job_then_poll_returns_result(
+    monkeypatch: pytest.MonkeyPatch, session_factory
+) -> None:
+    """/prepare returns a queued job; the background task fills in the result."""
+
+    async def _fake_build(address: str, sf: object, artifacts: object) -> tuple[object, str]:
+        prepared = v1.PreparedSubmissionResult(
+            partial_xdr="XDR", attestor="G" + "C" * 55, issued_at=1, expires_at=2,
+            submission_mode="live_cosign", submission_detail="live",
+        )
+        return v1._to_prepare_response(_fake_result(), prepared), "live_cosign"
+
+    monkeypatch.setattr(v1, "_build_prepared_attestation", _fake_build)
+
+    enqueued = await v1.prepare_attestation(ADDRESS, session_factory, object())
+    assert enqueued.status == "queued"
+    assert enqueued.stellar_address == ADDRESS
+    assert enqueued.result is None
+
+    # The proving task is scheduled but not yet run; drive it to completion.
+    import asyncio
+
+    await asyncio.gather(*list(v1._PROVING_TASKS))
+
+    polled = await v1.get_proving_job(enqueued.job_id, session_factory)
+    assert polled.status == "succeeded"
+    assert polled.submission_mode == "live_cosign"
+    assert polled.result is not None
+    assert polled.result.partial_xdr == "XDR"
+    assert polled.result.risk_bucket == 1
+
+
+@pytest.mark.asyncio
+async def test_prepare_job_records_failure(
+    monkeypatch: pytest.MonkeyPatch, session_factory
+) -> None:
+    """A proving failure is surfaced through the poll as failed, not a crash."""
+
+    async def _boom(address: str, sf: object, artifacts: object) -> tuple[object, str]:
+        raise RuntimeError("prover exploded")
+
+    monkeypatch.setattr(v1, "_build_prepared_attestation", _boom)
+
+    job_id = "test-job-fail"
+    from api import proving_jobs
+
+    await proving_jobs.create_job(session_factory, job_id, ADDRESS)
+    await v1._run_prepare_job(job_id, ADDRESS, session_factory, object())
+
+    polled = await v1.get_proving_job(job_id, session_factory)
+    assert polled.status == "failed"
+    assert polled.result is None
+    assert "prover exploded" in (polled.error_detail or "")
+
+
+@pytest.mark.asyncio
+async def test_get_proving_job_404_for_unknown_id(session_factory) -> None:
+    with pytest.raises(HTTPException) as exc:
+        await v1.get_proving_job("does-not-exist", session_factory)
+    assert exc.value.status_code == 404
 
 
 def test_stellar_address_validation_pattern() -> None:

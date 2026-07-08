@@ -10,7 +10,15 @@ import { getLoanTerms } from "../lib/contracts/mock-lending-pool";
 import type { LoanOffer } from "../lib/contracts/types";
 import { RISK_BUCKET_COLORS, RISK_BUCKET_LABELS } from "../lib/contracts/types";
 
-type Phase = "idle" | "connecting" | "attesting" | "reading" | "done" | "error";
+type Phase =
+  | "idle"
+  | "connecting"
+  | "attesting"
+  | "proving"
+  | "signing"
+  | "reading"
+  | "done"
+  | "error";
 
 // The full on-chain path, exactly as the demo narrates it:
 //   connect Freighter -> attestor co-signs -> wallet signs + submits ->
@@ -61,9 +69,13 @@ export default function OnChainAttest({
     setLoan(null);
     setPhase("attesting");
     try {
-      // 1. attestor scores + signs its authorization entry (server-side key).
-      const prepared = await prepareAttestation(wallet);
+      // 1. attestor scores the wallet, then a real per-wallet RISC Zero proof is
+      //    generated on the GPU node (async job, ~25s warm) — the phase flips to
+      //    "proving" while we poll — and the attestor signs its authorization
+      //    entry (server-side key).
+      const prepared = await prepareAttestation(wallet, () => setPhase("proving"));
       // 2. wallet signs the envelope (Freighter) and submits.
+      setPhase("signing");
       const hash = await submitCosignedAttestation(prepared.partial_xdr, wallet);
       setTxHash(hash);
       // 3. read the ZK-verified attestation back from the contract, and the
@@ -82,7 +94,12 @@ export default function OnChainAttest({
     }
   }
 
-  const busy = phase === "attesting" || phase === "reading" || phase === "connecting";
+  const busy =
+    phase === "attesting" ||
+    phase === "proving" ||
+    phase === "signing" ||
+    phase === "reading" ||
+    phase === "connecting";
 
   return (
     <div className="surface mx-auto mt-10 w-full max-w-2xl p-6 md:p-8">
@@ -104,10 +121,14 @@ export default function OnChainAttest({
           <p className="truncate font-mono text-xs text-fog-faint">{wallet}</p>
           <button onClick={attest} disabled={busy} className="btn-primary !py-2.5 text-xs disabled:opacity-50">
             {phase === "attesting"
-              ? "Attesting (sign in Freighter)…"
-              : phase === "reading"
-                ? "Reading on-chain result…"
-                : "Attest on-chain"}
+              ? "Scoring wallet…"
+              : phase === "proving"
+                ? "Proving in zkVM (~25s)…"
+                : phase === "signing"
+                  ? "Sign in Freighter…"
+                  : phase === "reading"
+                    ? "Reading on-chain result…"
+                    : "Attest on-chain"}
           </button>
         </div>
       )}

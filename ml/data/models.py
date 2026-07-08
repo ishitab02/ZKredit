@@ -84,3 +84,36 @@ class Attestation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class ProvingJob(Base):
+    """One async per-wallet proving job (Phase 2.3).
+
+    ``POST /attest/{address}/prepare`` enqueues a job and returns its id
+    immediately; a background task runs the RISC Zero proof (which offloads to
+    the Bento GPU node, ~25s warm — or falls back to the honest fixture when the
+    box is asleep) and writes the browser-signable co-sign result here.
+    ``GET /attest/jobs/{id}`` polls it. Kept as its own table (not columns on
+    ``attestations``) because its lifecycle is retries/status, distinct from
+    "what is currently true about this wallet".
+    """
+
+    __tablename__ = "proving_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # uuid4 hex
+    stellar_address: Mapped[str] = mapped_column(String(56), index=True)
+    # queued -> proving -> succeeded | failed
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    # The full AttestationPrepareResponse payload the frontend consumes, set on
+    # success (scored fields + partial_xdr + submission_mode). Null until then.
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # live_cosign (real per-wallet receipt) vs demo_fixture_cosign (honest
+    # fallback); null until the job finishes.
+    submission_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

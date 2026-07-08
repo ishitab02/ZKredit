@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Annotated
+from uuid import uuid4
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from api import proving_jobs
 from api.auth import SESSION_COOKIE_NAME, issue_session, verify_session
 from api.contract_stub import (
     AttestationParams,
@@ -22,6 +24,7 @@ from api.contract_stub import (
 from api.deps import get_artifacts, get_redis, get_session_factory
 from api.rate_limit import enforce_attest_limits
 from api.schemas import (
+    AttestationJobResponse,
     AttestationPrepareResponse,
     AttestationRecordResponse,
     AttestationResponse,
@@ -122,36 +125,106 @@ async def attest_wallet(
     return _to_attestation_response(result, submission.tx_hash)
 
 
+# Background proving tasks are fire-and-forget; hold a strong reference so the
+# event loop does not garbage-collect them mid-prove (asyncio only keeps weak
+# refs to tasks). Discarded on completion.
+_PROVING_TASKS: set[asyncio.Task[None]] = set()
+
+
 @router.post(
     "/attest/{stellar_address}/prepare",
-    response_model=AttestationPrepareResponse,
+    response_model=AttestationJobResponse,
     dependencies=[Depends(_attest_guard)],
 )
 async def prepare_attestation(
     stellar_address: StellarAddressPath,
     session_factory: SessionFactoryDep,
     artifacts: ArtifactsDep,
-) -> AttestationPrepareResponse:
-    """Score the wallet and return a browser-signable co-sign transaction.
+) -> AttestationJobResponse:
+    """Enqueue an async per-wallet proving job; poll ``GET /attest/jobs/{id}``.
 
-    The attestor server signs its own Soroban auth entry here; the wallet finishes
-    signing the envelope in Freighter (see ``submitCosignedAttestation``). When the
-    RISC Zero prover toolchain is available the anchored seal/journal is a live
-    per-wallet receipt; otherwise it honestly falls back to the committed fixture.
+    Real proving offloads to the Bento GPU node (~25s warm; longer if the box has
+    to wake from scale-to-zero), which is too long to block an HTTP request on. So
+    this returns a ``queued`` job immediately and a background task does the work:
+    score, prove (or fall back to the honest fixture when the box is asleep), and
+    build the browser-signable co-sign transaction (the attestor signs its own
+    Soroban auth entry; the wallet finishes signing in Freighter). The result
+    lands on the job row for the poll to return.
+    """
+    job_id = uuid4().hex
+    await proving_jobs.create_job(session_factory, job_id, stellar_address)
+    task = asyncio.create_task(
+        _run_prepare_job(job_id, stellar_address, session_factory, artifacts)
+    )
+    _PROVING_TASKS.add(task)
+    task.add_done_callback(_PROVING_TASKS.discard)
+    return AttestationJobResponse(
+        job_id=job_id, status=proving_jobs.QUEUED, stellar_address=stellar_address
+    )
+
+
+@router.get("/attest/jobs/{job_id}", response_model=AttestationJobResponse)
+async def get_proving_job(
+    job_id: str, session_factory: SessionFactoryDep
+) -> AttestationJobResponse:
+    """Poll an async proving job. Terminal states carry the result / error."""
+    job = await proving_jobs.read_job(session_factory, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such proving job")
+    return AttestationJobResponse(
+        job_id=job.id,
+        status=job.status,
+        stellar_address=job.stellar_address,
+        submission_mode=job.submission_mode,
+        error_detail=job.error_detail,
+        result=AttestationPrepareResponse(**job.result) if job.result else None,
+    )
+
+
+async def _run_prepare_job(
+    job_id: str,
+    stellar_address: str,
+    session_factory: async_sessionmaker[AsyncSession],
+    artifacts: ModelArtifacts,
+) -> None:
+    """Background body of a proving job: score -> prove -> co-sign -> persist."""
+    try:
+        await proving_jobs.mark_proving(session_factory, job_id)
+        response, submission_mode = await _build_prepared_attestation(
+            stellar_address, session_factory, artifacts
+        )
+        await proving_jobs.finish_job(
+            session_factory,
+            job_id,
+            status=proving_jobs.SUCCEEDED,
+            result=response.model_dump(mode="json"),
+            submission_mode=submission_mode,
+        )
+    except Exception as err:  # any failure is surfaced through the poll, not a 500.
+        logger.warning("proving job %s failed", job_id, exc_info=True)
+        await proving_jobs.finish_job(
+            session_factory,
+            job_id,
+            status=proving_jobs.FAILED,
+            error_detail=str(err)[:512] or err.__class__.__name__,
+        )
+
+
+async def _build_prepared_attestation(
+    stellar_address: str,
+    session_factory: async_sessionmaker[AsyncSession],
+    artifacts: ModelArtifacts,
+) -> tuple[AttestationPrepareResponse, str]:
+    """Score, prove (or fixture-fall-back), and build the co-sign response.
+
+    Returns the response and its ``submission_mode`` (``live_cosign`` /
+    ``demo_fixture_cosign``). Pure of job/DB bookkeeping so it is unit-testable.
     """
     result = await attest(stellar_address, session_factory=session_factory, artifacts=artifacts)
     params = _to_params(result)
     seal, journal = await _try_live_receipt(stellar_address, session_factory, artifacts)
-    try:
-        prepared = prepare_attestation_submission(params, seal=seal, journal=journal)
-    except ValueError as err:
-        raise HTTPException(status_code=503, detail=str(err)) from err
-    except Exception as err:
-        raise HTTPException(
-            status_code=502,
-            detail="Attestation was scored, but building the co-sign transaction failed.",
-        ) from err
-    return _to_prepare_response(result, prepared)
+    prepared = prepare_attestation_submission(params, seal=seal, journal=journal)
+    return _to_prepare_response(result, prepared), prepared.submission_mode
 
 
 async def _try_live_receipt(

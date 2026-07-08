@@ -71,6 +71,29 @@ class AttestationPrepareResponse(AttestationResponse):
     )
 
 
+class AttestationJobResponse(BaseModel):
+    """An async per-wallet proving job (Phase 2.3).
+
+    ``POST /attest/{address}/prepare`` returns this with ``status="queued"``; the
+    frontend polls ``GET /attest/jobs/{job_id}`` until ``status`` is terminal.
+    On ``succeeded`` the ``result`` carries the browser-signable co-sign payload;
+    on ``failed`` ``error_detail`` explains why.
+    """
+
+    job_id: str
+    status: str = Field(description="queued | proving | succeeded | failed")
+    stellar_address: str
+    submission_mode: str | None = Field(
+        default=None,
+        description="live_cosign (real per-wallet receipt) or demo_fixture_cosign "
+        "(honest fallback); null until the job finishes.",
+    )
+    error_detail: str | None = None
+    result: AttestationPrepareResponse | None = Field(
+        default=None, description="The co-sign payload, present only when succeeded."
+    )
+
+
 class AttestationRecordResponse(BaseModel):
     """A stored on-chain attestation (read path)."""
 
