@@ -71,6 +71,18 @@ class Settings(BaseSettings):
     e2e_plan: str | None = None
     e2e_saved_image: str | None = None
 
+    # RunPod serverless proving (native GPU Groth16 worker; ml/risc0/worker/).
+    # When both runpod_endpoint_id and runpod_api_key are set, prove_wallet()
+    # ships the feature vector to the RunPod endpoint, which runs the host binary
+    # on its own GPU (native Groth16, no local r0vm/Docker) and scales to zero
+    # between proofs — the cost fix for the always-on GPU box. Takes precedence
+    # over bento_strategy when configured.
+    runpod_api_key: str | None = None
+    runpod_endpoint_id: str | None = None
+    # Wall-clock ceiling for one proof, including a cold worker boot.
+    runpod_timeout_s: int = 900
+    runpod_poll_interval_s: float = 2.0
+
     # Soroban attestation submission. When the contract id and attestor seed are
     # present, the API can submit to the real contract helper instead of the
     # local stub cache.

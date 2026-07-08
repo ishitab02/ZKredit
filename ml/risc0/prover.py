@@ -88,15 +88,23 @@ def prover_available() -> bool:
     host), and ``docker`` (the STARK->SNARK compression step runs in Docker).
     With remote Bento proving configured (``bento_strategy`` != off, or a
     ``BONSAI_API_URL`` in the environment), the GPU node does all of that and
-    only ``cargo`` is needed here — the host binary becomes a thin client.
+    only ``cargo`` is needed here — the host binary becomes a thin client. With
+    RunPod configured, the worker owns the whole proof (host binary + GPU), so
+    nothing is needed on this box at all.
     """
     from ml.risc0.bento_node import remote_proving_configured
+    from ml.risc0.runpod_prover import runpod_configured
+
+    if runpod_configured():
+        return True
 
     if remote_proving_configured():
         host_bin = os.environ.get(_ENV_HOST_BIN)
         if host_bin:
             return Path(host_bin).is_file() and os.access(host_bin, os.X_OK)
         return shutil.which("cargo") is not None
+
+    return all(shutil.which(tool) is not None for tool in ("r0vm", "cargo", "docker"))
 
 
 def feature_vector_json(selected_vector: NDArray[np.float64]) -> str:
@@ -135,6 +143,14 @@ def prove_wallet(
 
     commitment = identity_commitment_for(stellar_address)
     vector_json = feature_vector_json(selected_vector)
+
+    # RunPod serverless: the worker runs the host binary on its own GPU, so we
+    # hand it the (validated) vector + commitment and decode the returned proof.
+    # No local subprocess, tunnel, or toolchain involved.
+    from ml.risc0.runpod_prover import runpod_configured, runpod_prove
+
+    if runpod_configured():
+        return runpod_prove(json.loads(vector_json), commitment, timeout_s=timeout_s)
 
     with tempfile.TemporaryDirectory(prefix="zkredit-risc0-") as tmp:
         tmp_path = Path(tmp)
