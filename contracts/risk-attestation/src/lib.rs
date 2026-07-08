@@ -257,8 +257,13 @@ impl RiskAttestation {
     /// Multi-wallet resolution (Option A — shared group score): if the wallet's
     /// own attestation carries an `identity_commitment` and a WalletIdentity
     /// contract is configured, the shared group attestation is returned instead,
-    /// so any wallet in the group surfaces the group's best score. The querying
-    /// wallet's own record is never exposed when a group score is available.
+    /// so any wallet in the group surfaces the same group score. That group score
+    /// is a *holistic union* re-score (the off-chain attestor's `attest_group`
+    /// merges every member wallet's on-chain history and scores it as one
+    /// economic actor), not a per-wallet "best score" cherry-pick — one bad
+    /// wallet cannot be hidden behind a better-scoring one in the same group.
+    /// The querying wallet's own record is never exposed when a group score is
+    /// available.
     pub fn get_attestation(env: Env, wallet: Address) -> Option<AttestationData> {
         let own: Option<AttestationData> = env
             .storage()

@@ -78,6 +78,12 @@ def _extract_population_dict(wallet: WalletData) -> dict[str, float]:
 
     timestamps = []
 
+    # Membership check rather than equality to a single address: for a holistic
+    # group view (WalletData.member_addresses set), a payment between two of the
+    # group's own wallets is internal — neither an external send nor receive —
+    # so it must not inflate sent/recv stats or counterparty diversity.
+    self_addresses = wallet.self_addresses
+
     for op in ops:
         op_type = str(op.get("type", ""))
         if op_type:
@@ -97,12 +103,14 @@ def _extract_population_dict(wallet: WalletData) -> dict[str, float]:
             amount = _to_float(op.get("amount"))
             src = op.get("from") or op.get("source_account")
             dst = op.get("to")
-            if src == wallet.address and dst and dst != wallet.address:
+            src_is_self = src in self_addresses
+            dst_is_self = dst in self_addresses
+            if src_is_self and dst and not dst_is_self:
                 sent_amounts.append(amount)
                 send_counterparties.add(str(dst))
                 if _is_native_payment(op):
                     native_sent += 1
-            elif dst == wallet.address and src and src != wallet.address:
+            elif dst_is_self and src and not src_is_self:
                 recv_amounts.append(amount)
                 recv_counterparties.add(str(src))
         elif op_type in _OFFER_TYPES:

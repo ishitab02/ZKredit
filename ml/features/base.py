@@ -12,20 +12,34 @@ from numpy.typing import NDArray
 
 @dataclass(frozen=True)
 class WalletData:
-    """All cached inputs needed to compute features for one wallet.
+    """All cached inputs needed to compute features for one wallet (or group).
 
     Built from the Horizon cache (``Account.raw`` + ``Operation.raw`` rows).
     ``reference_time`` anchors age/recency calculations (defaults to now).
+
+    ``member_addresses``, when set, marks this as a *holistic group* view (Phase
+    3.4): ``operations``/``account`` are the union across every wallet in an
+    identity group, and payments between two of the group's own member
+    addresses are treated as internal (excluded from external send/recv stats)
+    rather than counted as an external transfer to/from a single ``address``.
+    ``None`` (the default) means a plain single-wallet view, equivalent to
+    ``member_addresses={address}``.
     """
 
     address: str
     account: dict[str, Any]
     operations: list[dict[str, Any]]
     reference_time: datetime = field(default_factory=lambda: datetime.now(UTC))
+    member_addresses: frozenset[str] | None = None
 
     @property
     def balances(self) -> list[dict[str, Any]]:
         return self.account.get("balances", [])
+
+    @property
+    def self_addresses(self) -> frozenset[str]:
+        """The set of addresses counted as "self" for send/recv attribution."""
+        return self.member_addresses if self.member_addresses is not None else frozenset({self.address})
 
 
 @dataclass(frozen=True)
