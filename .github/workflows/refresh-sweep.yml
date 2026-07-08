@@ -1,0 +1,36 @@
+name: attestation-refresh-sweep
+
+# Phase 4.3.2 auto-refresh: on a schedule, ask the API to re-attest any wallet
+# whose attestation is nearing expiry AND has new on-chain activity. Free (GitHub
+# Actions cron) — no always-on machine, respecting the scale-to-zero deployment.
+#
+# Setup: add repo secrets INTERNAL_SWEEP_TOKEN (must equal the API's
+# internal_sweep_token / Fly secret) and optionally SWEEP_API_URL. The endpoint
+# is a no-op (503) until internal_sweep_token is set on the API.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger refresh sweep
+        env:
+          API_URL: ${{ secrets.SWEEP_API_URL || 'https://zkredit-api.fly.dev' }}
+          TOKEN: ${{ secrets.INTERNAL_SWEEP_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "INTERNAL_SWEEP_TOKEN secret not set — skipping (endpoint would 401)."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/sweep.json -w "%{http_code}" \
+            -X POST "$API_URL/api/v1/internal/refresh-sweep" \
+            -H "X-Internal-Token: $TOKEN")
+          echo "HTTP $code"; cat /tmp/sweep.json; echo
+          # 503 = sweep not configured on the API yet (acceptable, not a failure).
+          if [ "$code" != "200" ] && [ "$code" != "503" ]; then
+            exit 1
+          fi

@@ -151,3 +151,26 @@ class KycVerification(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class GroupMembership(Base):
+    """A wallet's membership in an identity group (Phase 4.3).
+
+    The WalletIdentity contract binds wallets to a shared ``commitment`` via
+    ``register_wallet`` (on-chain, proof-gated), but exposes no "list members"
+    view. This backend-side mirror lets the group re-score trigger discover which
+    wallets belong to a commitment so ``ml.attest.attest_group`` can re-score the
+    whole group. One row per wallet; a wallet belongs to exactly one group, so
+    ``wallet_address`` is the PK (re-registering updates the commitment).
+    """
+
+    __tablename__ = "group_memberships"
+
+    wallet_address: Mapped[str] = mapped_column(String(56), primary_key=True)
+    commitment: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

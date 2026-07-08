@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     session_secret: str | None = None
     session_ttl_seconds: int = 24 * 60 * 60
 
+    # Phase 4.3 auto-refresh sweep: a shared secret the scheduled GitHub Action
+    # presents (X-Internal-Token) to call POST /internal/refresh-sweep, plus the
+    # look-ahead window for "near expiry". When the token is unset the endpoint is
+    # closed (503) so it can't be hit anonymously.
+    internal_sweep_token: str | None = None
+    refresh_window_seconds: int = 3 * 24 * 60 * 60
+
     # KYC / Sybil resistance (Phase 3, Didit provider). All secrets — set via fly
     # secrets, never committed. When keys are unset the KYC endpoints report the
     # provider as unconfigured rather than failing mid-flow.

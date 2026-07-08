@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from api.deps import setup_state, teardown_state
 from api.routes import router as v1_router
+from api.routes.identity import router as identity_router
 from api.routes.kyc import router as kyc_router
 from ml.config import get_settings
 
@@ -46,6 +47,7 @@ app = FastAPI(
 )
 app.include_router(v1_router)
 app.include_router(kyc_router)
+app.include_router(identity_router)
 
 # Explicit CORS allowlist (replaces the old wildcard). Origins come from
 # ml.config (localhost dev + the deployed Vercel prod URL); the optional regex

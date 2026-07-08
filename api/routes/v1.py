@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -22,6 +23,7 @@ from api.contract_stub import (
     submit_attestation,
 )
 from api.deps import get_artifacts, get_redis, get_session_factory
+from api.identity.store import commitment_for_wallet
 from api.rate_limit import enforce_attest_limits
 from api.schemas import (
     AttestationJobResponse,
@@ -33,6 +35,8 @@ from api.schemas import (
     ReasonCodeOut,
     TopFeatureOut,
 )
+from api.services.group_rescore import enqueue_group_rescore
+from api.services.refresh_sweep import find_refreshable
 from api.validation import STELLAR_ADDRESS_PATTERN, StellarAddressPath
 from ml.attest import attest
 from ml.config import get_settings
@@ -151,6 +155,22 @@ async def prepare_attestation(
     Soroban auth entry; the wallet finishes signing in Freighter). The result
     lands on the job row for the poll to return.
     """
+    job_id = await _enqueue_prepare_job(stellar_address, session_factory, artifacts)
+    return AttestationJobResponse(
+        job_id=job_id, status=proving_jobs.QUEUED, stellar_address=stellar_address
+    )
+
+
+async def _enqueue_prepare_job(
+    stellar_address: str,
+    session_factory: async_sessionmaker[AsyncSession],
+    artifacts: ModelArtifacts,
+) -> str:
+    """Create a proving-job row + spawn its background task; return the job id.
+
+    Shared by the on-demand ``/prepare`` route and the Phase 4.3 auto-refresh
+    sweep — a re-attest is just another job on the same queue.
+    """
     job_id = uuid4().hex
     await proving_jobs.create_job(session_factory, job_id, stellar_address)
     task = asyncio.create_task(
@@ -158,9 +178,7 @@ async def prepare_attestation(
     )
     _PROVING_TASKS.add(task)
     task.add_done_callback(_PROVING_TASKS.discard)
-    return AttestationJobResponse(
-        job_id=job_id, status=proving_jobs.QUEUED, stellar_address=stellar_address
-    )
+    return job_id
 
 
 @router.get("/attest/jobs/{job_id}", response_model=AttestationJobResponse)
@@ -179,6 +197,39 @@ async def get_proving_job(
         error_detail=job.error_detail,
         result=AttestationPrepareResponse(**job.result) if job.result else None,
     )
+
+
+@router.post("/internal/refresh-sweep")
+async def refresh_sweep(
+    session_factory: SessionFactoryDep,
+    artifacts: ArtifactsDep,
+    x_internal_token: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    """Enqueue re-attest jobs for near-expiry wallets with new activity (Phase 4.3.2).
+
+    Token-gated (``X-Internal-Token`` must match ``internal_sweep_token``) and
+    meant to be called by a scheduled GitHub Action — not a public endpoint. When
+    the token isn't configured the endpoint is closed so it can't be hit anonymously.
+    """
+    settings = get_settings()
+    if not settings.internal_sweep_token:
+        raise HTTPException(status_code=503, detail="refresh sweep not configured")
+    if x_internal_token != settings.internal_sweep_token:
+        raise HTTPException(status_code=401, detail="invalid internal token")
+
+    now = int(datetime.now(UTC).timestamp())
+    candidates = await find_refreshable(
+        session_factory, now=now, window_s=settings.refresh_window_seconds
+    )
+    job_ids = [
+        await _enqueue_prepare_job(c.stellar_address, session_factory, artifacts)
+        for c in candidates
+    ]
+    return {
+        "swept": len(job_ids),
+        "addresses": [c.stellar_address for c in candidates],
+        "job_ids": job_ids,
+    }
 
 
 async def _run_prepare_job(
@@ -200,6 +251,11 @@ async def _run_prepare_job(
             result=response.model_dump(mode="json"),
             submission_mode=submission_mode,
         )
+        # Phase 4.3: if this wallet is in an identity group, its fresh history
+        # changes the group's union score — recompute + push it (fire-and-forget).
+        commitment = await commitment_for_wallet(session_factory, stellar_address)
+        if commitment is not None:
+            await enqueue_group_rescore(session_factory, commitment)
     except Exception as err:  # any failure is surfaced through the poll, not a 500.
         logger.warning("proving job %s failed", job_id, exc_info=True)
         await proving_jobs.finish_job(

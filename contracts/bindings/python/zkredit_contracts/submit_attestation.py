@@ -345,3 +345,98 @@ def submit_bind_kyc(
     if result.status != GetTransactionStatus.SUCCESS:
         raise RuntimeError(f"bind_kyc did not succeed on-chain: {result.status}")
     return send.hash
+
+
+def _prepare_sign_send_poll(server, tx, keypair, timeout: int, op_name: str) -> str:
+    """Soroban submit lifecycle: simulate -> sign -> send -> poll. Returns tx hash.
+
+    Shared by attestor-authed writes (no interactive co-sign). ``poll_transaction``
+    isn't in every stellar-sdk 12.x, so poll manually with ``get_transaction``.
+    """
+    prepared = server.prepare_transaction(tx)
+    prepared.sign(keypair)
+    send = server.send_transaction(prepared)
+    if send.status != SendTransactionStatus.PENDING:
+        raise RuntimeError(
+            f"{op_name} send failed: {send.status}"
+            f" {getattr(send, 'error_result_xdr', '') or ''}".rstrip()
+        )
+    deadline = time.monotonic() + timeout
+    result = server.get_transaction(send.hash)
+    while result.status == GetTransactionStatus.NOT_FOUND and time.monotonic() < deadline:
+        time.sleep(1)
+        result = server.get_transaction(send.hash)
+    if result.status != GetTransactionStatus.SUCCESS:
+        raise RuntimeError(f"{op_name} did not succeed on-chain: {result.status}")
+    return send.hash
+
+
+def submit_update_group_score(
+    *,
+    contract_id: str,
+    attestor: str,
+    commitment: bytes,
+    representative_wallet: str,
+    risk_bucket: int,
+    confidence: int,
+    full_model_hash: bytes,
+    distilled_model_hash: bytes,
+    proof_or_hash: bytes,
+    zk_verified: bool,
+    kyc_verified: bool,
+    issued_at: int,
+    expires_at: int,
+    attestor_seed: str,
+    rpc_url: str = "https://soroban-testnet.stellar.org",
+    network_passphrase: str = "Test SDF Network ; September 2015",
+    timeout: int = 30,
+) -> str:
+    """Call ``WalletIdentity.update_group_score(attestor, commitment, attestation)``.
+
+    Pushes the holistic group re-score (Phase 4.3) as the shared group
+    ``AttestationData``. Attestor-authed (source-account credential), so no wallet
+    co-sign is needed. ``representative_wallet`` fills ``AttestationData.wallet``
+    (a member address — group resolution keys off ``commitment``, not this field);
+    ``identity_commitment`` is set to ``commitment``. Returns the tx hash.
+
+    Note: the contract rejects with ``AttestationNotFound`` if no wallet is
+    registered on-chain under this commitment (``IdentityMemberCount == 0``).
+    """
+    if len(commitment) != 32:
+        raise ValueError("commitment must be 32 bytes")
+    params = AttestationParams(
+        wallet=representative_wallet,
+        risk_bucket=risk_bucket,
+        confidence=confidence,
+        full_model_hash=full_model_hash,
+        distilled_model_hash=distilled_model_hash,
+        proof_or_hash=proof_or_hash,
+        zk_verified=zk_verified,
+        attestor=attestor,
+        issued_at=issued_at,
+        expires_at=expires_at,
+        kyc_verified=kyc_verified,
+        identity_commitment=commitment,
+    )
+    keypair = Keypair.from_secret(attestor_seed)
+    server = SorobanServer(rpc_url)
+    source = server.load_account(keypair.public_key)
+    tx = (
+        TransactionBuilder(
+            source_account=source,
+            network_passphrase=network_passphrase,
+            base_fee=100000,
+        )
+        .set_timeout(timeout)
+        .append_invoke_contract_function_op(
+            contract_id=contract_id,
+            function_name="update_group_score",
+            parameters=[
+                StellarAddress(attestor).to_xdr_sc_val(),
+                scval.to_bytes(commitment),
+                _build_attestation_scval(params),
+            ],
+        )
+        .build()
+    )
+    return _prepare_sign_send_poll(server, tx, keypair, timeout, "update_group_score")
