@@ -10,8 +10,8 @@ ZKredit is a privacy-preserving risk attestation layer for Stellar. It turns a w
 
 Three layers compose the system:
 
-1. **Off-chain ML pipeline** (`/ml/`, `/api/`) — ingests Stellar data, extracts behavioral features, trains a full XGBoost classifier with Isolation Forest anomaly detection, distills a small logistic regression for ZK proof, and exposes a FastAPI orchestrator.
-2. **ZK proof layer** (`/ml/zk/`) — compiles the distilled ONNX model to a Groth16 circuit over BN254 via EZKL, generating proofs verifiable on Soroban.
+1. **Off-chain ML pipeline** (`/ml/`, `/api/`) — ingests Stellar data, extracts behavioral features, trains a full XGBoost classifier with Isolation Forest anomaly detection and calibration, distills a small RandomForest for ZK proof, and exposes a FastAPI orchestrator.
+2. **ZK proof layer** (`/ml/risc0/`) — runs the distilled RandomForest inference inside a RISC Zero zkVM guest, proves it as a STARK, and compresses that to a Groth16 (BN254) receipt verifiable on Soroban. (Pivoted from EZKL/Halo2 — see `docs/adr/0001-risc0-zkml-pipeline.md`.) A separate Poseidon identity circuit (`/ml/zk/identity_circuit/`, Circom→Groth16) proves multi-wallet linkage against the same BN254 verifier.
 3. **On-chain layer** (`/contracts/`, `/frontend/`) — Soroban contracts store attestations, manage authorized attestors, and let lending protocols read risk-adjusted loan terms.
 
 ---
@@ -142,13 +142,11 @@ All features are cached in the `features` table keyed by `(stellar_address, extr
 
 ### 4.3 Distilled Model
 
-- **Type**: logistic regression on the top 20-30 SHAP-ranked features from the full model.
+- **Type**: a **RandomForest** on the top 30 SHAP-selected transformed features from the full model (SmartCore-compatible so it runs inside the RISC Zero guest).
 - **Training**: teacher-student distillation.
-- **Export**: ONNX.
-- **ZK target**: EZKL compiles the ONNX to a Groth16 circuit over BN254.
-- **Hash**: SHA-256 of the ONNX file committed to `distilled_model_hash`.
-
-If DG2 fails, the distilled model is replaced by a depth-1 decision stump over the top 5 features.
+- **Canonical artifact**: `model_store/risc0_distilled_model.json` — the exported artifact's exact bytes are the sole runtime/proof authority (hashed via `include_bytes!`, not reserialized). sklearn is training/diagnostic only.
+- **ZK target**: the distilled inference is executed inside a **RISC Zero zkVM** guest and proven; the STARK is compressed to a **Groth16 (BN254)** receipt verified on Soroban (see §6 and `docs/adr/0001-risc0-zkml-pipeline.md`). Custom half-up `confidence_bps` rounding avoids Python/Rust rounding drift at boundaries.
+- **Hash**: SHA-256 of the canonical artifact committed to `distilled_model_hash`.
 
 ### 4.4 Calibration
 
@@ -209,14 +207,24 @@ fn attest_with_proof(
     proof_bytes: Bytes,
 ) -> Result<(), Error>;
 
+// Primary path: verify a RISC Zero Groth16 receipt (seal + journal) against the
+// whitelisted guest image id, then bind the proven journal fields.
+fn attest_with_risc0(
+    env: Env,
+    wallet: Address,
+    data: AttestationData,
+    seal: Bytes,
+    journal: Bytes,
+) -> Result<(), Error>;
+
 // Resolves identity_commitment → shared group attestation when WalletIdentity is wired.
 fn get_attestation(env: Env, wallet: Address) -> Option<AttestationData>;
 ```
 
-- `attest_with_hash` is the optimistic path. It stores the attestation without verifying the proof on-chain.
-- `attest_with_proof` is the full Groth16 path. As of Day 1 the verification step is a stub; DG1 decides whether to wire `env.crypto().bn254().pairing_check` or keep only the hash path.
-- Both paths require `wallet.require_auth()` so the wallet owner must authorize attestation publication.
-- If DG1 passes, `attest_with_proof` will verify `proof_bytes` against `distilled_model_hash` and public inputs derived from `risk_bucket`/`confidence` before storing.
+- `attest_with_risc0` is the **primary** path (post-ADR-0001): it verifies the RISC Zero Groth16 receipt on-chain (`contracts/shared/src/risc0.rs`) against the whitelisted guest image id, overwrites the proven journal fields (`risk_bucket`, `confidence`, `identity_commitment`, `distilled_model_hash`), and sets `zk_verified = true`. Unlike the other paths it is **not write-once**: a wallet may re-attest after further on-chain activity, guarded only by a strictly-increasing `issued_at` (anti-replay); the on-chain record holds the latest version and the full history lives off-chain in Postgres (Phase 4).
+- `attest_with_hash` is the optimistic path — stores the attestation without on-chain verification (`zk_verified = false`).
+- `attest_with_proof` is a direct Groth16 path retained from DG1 (verifies `proof_bytes` against a registered verification key for `distilled_model_hash`, else falls back to hash-anchored).
+- All paths require `wallet.require_auth()` and an authorized attestor (`AttestorRegistry`).
 - Error enum:
 
 ```rust
@@ -298,23 +306,15 @@ If `zk_verified == false`, APR is increased by 200 bps. If no attestation exists
 
 ## 6. ZK Proof Layer
 
-EZKL pipeline (`/ml/zk/ezkl_pipeline.py`) exposes:
-
-```python
-def prove(features: np.ndarray, model_hash: str) -> tuple[bytes, list]:
-    """
-    Returns Groth16 proof bytes and public inputs for the distilled model.
-    """
-```
+The RISC Zero pipeline (`/ml/risc0/`) proves the distilled RandomForest's inference. The guest ELF (`/ml/risc0/methods/`) runs the model on the private feature vector; the host (`/ml/risc0/host/`, driven by `prover.py`) produces the receipt. Proving is offloaded to a self-hosted Bento GPU cluster via `BONSAI_API_URL`/`BONSAI_API_KEY` (`bento_node.py`), with a 5 s `/health` pre-flight that falls back to a committed honest fixture when the prover is offline.
 
 Workflow:
 
-1. Export distilled ONNX.
-2. `ezkl setup` to generate structured reference string, proving key, and verification key.
-3. `ezkl prove` to generate proof and public inputs.
-4. API submits proof + public inputs + `AttestationData` to `RiskAttestation::attest_with_proof`.
+1. Score the wallet; build the distilled feature vector for the guest.
+2. Prove in the RISC Zero zkVM → STARK, compressed to a **Groth16 (BN254)** receipt (`seal` + `journal`).
+3. API co-signs and submits `seal` + `journal` + `AttestationData` to `RiskAttestation::attest_with_risc0`, which verifies the receipt against the whitelisted guest image id (`contracts/shared/src/risc0.rs`) and binds the proven journal fields with `zk_verified = true`.
 
-If DG1 fails, the pipeline skips on-chain verification and calls `attest_with_hash`, setting `zk_verified = false`.
+When proving is unavailable, the path degrades to the committed fixture and is labeled honestly (`submission_mode = demo_fixture_cosign`); a hash-anchored fallback (`attest_with_hash`) sets `zk_verified = false`.
 
 ---
 
@@ -368,13 +368,14 @@ Required UI elements:
 
 ## 9. Decision Gates
 
-| Gate | Owner | Due | Pass | Fail action |
-|---|---|---|---|---|
-| DG1 — Soroban Groth16 verifier | Soham | Day 2 EOD | `env.crypto().bn254().pairing_check` verifies a known good proof | Use only `attest_with_hash`; `zk_verified = false`; add dispute window |
-| DG2 — EZKL proof time | Ishita | Day 2 EOD | 20-dim logreg < 10K constraints, proves < 30s | Decision stump, top 5 features |
-| DG3 — BigQuery access | Ishita | Day 1 EOD | `crypto_stellar` returns rows | Horizon-only, 1-year window |
-| DG4 — Blend testnet | Soham | Day 2 EOD | Blend testnet contract can read `RiskAttestation` | MockLendingPool only; Blend becomes M2 target |
-| DG5 — Synthetic label quality | Ishita | Day 5 EOD | Silhouette > 0.3 and ≥ 80% manual agreement | Unsupervised Isolation Forest + clustering |
+| Gate | Pass criterion | Fail action | Status |
+|---|---|---|---|
+| DG1 — Soroban Groth16 verifier | `env.crypto().bn254().pairing_check` verifies a known good proof | Use only `attest_with_hash`; `zk_verified = false`; add dispute window | **PASS** |
+| DG2 — RISC Zero proving (was: EZKL) | Distilled RandomForest proven in the zkVM → Groth16 receipt verifies on-chain | Hash-anchor only (`zk_verified = false`) | **PASS** — live on testnet; supersedes the EZKL/logreg gate per ADR-0001 |
+| DG6 — Poseidon identity circuit | Proof-gated multi-wallet linking verifies on Soroban BN254 | Single-wallet only | **PASS** (2026-07-05) |
+| DG3 — BigQuery access | `crypto_stellar` returns rows | Horizon-only, 1-year window | Resolved (see `docs/`) |
+| DG4 — Blend testnet | Blend testnet contract can read `RiskAttestation` | MockLendingPool only; Blend becomes M2 target | MockLendingPool path |
+| DG5 — Synthetic label quality | Silhouette > 0.3 and ≥ 80% manual agreement | Unsupervised Isolation Forest + clustering | Synthetic labels (documented) |
 
 ---
 
@@ -387,30 +388,39 @@ Required UI elements:
 - **Expired attestations**: consumers must check `expires_at`. MockLendingPool falls back to default terms for expired attestations.
 - **Dispute window** (DG1 fallback): hash-anchored attestations can be challenged for 7 days. On-chain Groth16 attestations are final immediately if DG1 passes.
 
-### 10.1 Multi-wallet identity — known gaps (close before mainnet)
+### 10.1 Multi-wallet identity — gaps closed (Phase 3.1)
 
-The `WalletIdentity` multi-wallet path currently does not meet two guarantees
-asserted above. Both are demo-acceptable but must be closed before real value:
+Two gaps that the `WalletIdentity` multi-wallet path originally had — both
+demo-acceptable, both **now fixed and tested** — for the record:
 
-- **Group-score authorization.** `update_group_score(commitment, attestation)`
-  has no caller check — any account can overwrite an active group's shared
-  attestation with arbitrary values (e.g. force VERY_LOW for free good terms, or
-  VERY_HIGH to grief a victim group), and `get_attestation` will serve it. It
-  must be attestor-gated, mirroring `RiskAttestation`'s `AttestorRegistry`
-  check (wire the registry into WalletIdentity and require `is_attestor(caller)`).
-- **Proof-to-wallet binding.** The identity circuit's only public input is the
-  Poseidon commitment, not the linking wallet. Since `proof_bytes` is public in
-  the `register_wallet` transaction, a third party can replay a member's proof to
-  register their own wallet into the group and inherit its score. Fix: add the
-  wallet address as a public input to the identity circuit (new trusted setup) so
-  the proof binds to the caller, and have `register_wallet` check the proof's
-  public inputs equal `[commitment, wallet]`.
+- **Group-score authorization.** ~~`update_group_score` had no caller check.~~
+  **Fixed:** it now takes an `attestor: Address` and calls
+  `require_registered_attestor` against a wired `AttestorRegistry`
+  (test: `update_group_score_rejects_non_attestor`).
+- **Proof-to-wallet binding.** ~~The identity circuit's only public input was the
+  Poseidon commitment, so a public `proof_bytes` could be replayed against a
+  different wallet.~~ **Fixed:** the circuit now exposes the caller wallet as a
+  second public input (`component main {public [wallet]}`), and `register_wallet`
+  checks both public inputs equal `[commitment, addr_to_fr(wallet)]`
+  (`addr_to_fr = Fr(sha256(strkey)) mod r`, computed identically in the frontend,
+  the circuit witness, and the contract). This required a fresh single-contributor
+  trusted setup — a named audit item for mainnet (M3).
+
+### 10.2 KYC-bound Sybil resistance (Phase 3.3)
+
+`WalletIdentity::bind_kyc(attestor, commitment, nullifier)` maps one opaque
+one-way nullifier (`HMAC(pepper, doc# ‖ country)`, derived off-chain, **no raw
+PII stored or on-chain**) to at most one identity commitment (`NullifierAlreadyBound`
+on a second, different commitment). This is the Sybil-resistance mechanism: one
+verified human → one credit identity. The residual limitation (a permissionless
+chain cannot force disclosure of every wallet a person controls) is stated
+plainly in the README's Honest Limitations.
 
 If the timeline slips, cut from the bottom up. Do not cut out of order.
 
 1. Three Soroban contracts deployed to testnet
 2. Risk bucket attestation working end-to-end via API
-3. Distilled model + EZKL proof generation
+3. Distilled model + RISC Zero proof generation (Groth16 receipt)
 4. Dashboard wallet lookup with risk bucket and `zk_verified` badge
 5. MockLendingPool consumption with before/after demo
 6. Full 200-dim model (fallback to 50 dims)
