@@ -21,7 +21,10 @@ pub struct AttestationData {
     pub attestor: Address,
     pub issued_at: u64,
     pub expires_at: u64,
-    /// Attestor-certified KYC status. Unlocks −100 bps APR discount in lending contracts.
+    /// Attestor-certified KYC status, bound via a Sybil-resistant nullifier
+    /// (WalletIdentity::bind_kyc). The credit *gate* in lending: only a
+    /// kyc_verified identity gets real borrowing capacity (anti-wallet-hopping);
+    /// un-KYC'd wallets get thin-file terms.
     pub kyc_verified: bool,
     /// Poseidon(secret) commitment that links this wallet to an identity group.
     /// None means the wallet is not enrolled in any multi-wallet group.
@@ -54,6 +57,15 @@ pub enum DataKey {
     AttestorRegistry,
     /// Address of the RiskAttestation contract used by downstream consumers (e.g. MockLendingPool).
     RiskAttestation,
+    /// Sybil-resistance registry: maps an opaque KYC nullifier (HMAC of the
+    /// verified document, computed off-chain — never raw PII) to the single
+    /// identity commitment it is bound to. One verified human → one nullifier →
+    /// at most one identity group. Stored by WalletIdentity::bind_kyc.
+    NullifierCommitment(BytesN<32>),
+    /// Whether an identity group (commitment) has a bound KYC nullifier, i.e. is
+    /// KYC-verified. Set by bind_kyc; overlaid onto the group AttestationData so
+    /// KYC survives regardless of scoring order. commitment → bool.
+    KycVerified(BytesN<32>),
 }
 
 #[contracterror]
@@ -80,6 +92,9 @@ pub enum Error {
     /// Re-attestation carried an `issued_at` not strictly newer than the stored
     /// one — rejected so an older (possibly better) score can't be replayed.
     StaleAttestation = 15,
+    /// This KYC nullifier is already bound to a *different* identity commitment —
+    /// the same verified human cannot mint a second identity group (Sybil block).
+    NullifierAlreadyBound = 16,
 }
 
 /// Standard attestation-written event.

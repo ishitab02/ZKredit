@@ -175,11 +175,89 @@ impl WalletIdentity {
         Ok(())
     }
 
-    /// Return the aggregated attestation for an identity group, if any.
-    pub fn get_group_attestation(env: Env, commitment: BytesN<32>) -> Option<AttestationData> {
+    /// Bind a KYC nullifier to an identity group — the Sybil-resistance gate.
+    ///
+    /// `nullifier` is an opaque 32-byte value derived off-chain from the verified
+    /// document (HMAC of doc# + issuing country under a server pepper) — never raw
+    /// PII. Attestor-gated like `update_group_score`. The invariant: a nullifier
+    /// maps to exactly one commitment, so one verified human (one stable
+    /// nullifier) can only ever KYC a single identity group, no matter how many
+    /// fresh secrets they generate. Re-binding the *same* commitment is idempotent;
+    /// binding it to a *different* commitment is rejected (`NullifierAlreadyBound`).
+    /// On success the group is marked KYC-verified (`kyc_verified: true`), which the
+    /// lending pool reads as the credit gate.
+    pub fn bind_kyc(
+        env: Env,
+        attestor: Address,
+        commitment: BytesN<32>,
+        nullifier: BytesN<32>,
+    ) -> Result<(), Error> {
+        Self::require_registered_attestor(&env, &attestor)?;
+
+        let existing: Option<BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::NullifierCommitment(nullifier.clone()));
+        if let Some(bound) = existing {
+            if bound != commitment {
+                return Err(Error::NullifierAlreadyBound);
+            }
+            // Same identity re-verifying — idempotent, nothing new to bind.
+            return Ok(());
+        }
+
         env.storage()
             .persistent()
-            .get(&DataKey::IdentityAttestation(commitment))
+            .set(&DataKey::NullifierCommitment(nullifier), &commitment);
+        env.storage()
+            .persistent()
+            .set(&DataKey::KycVerified(commitment.clone()), &true);
+
+        // Reflect it on the stored group attestation if one already exists, so a
+        // direct read is correct even without the overlay below.
+        let att: Option<AttestationData> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::IdentityAttestation(commitment.clone()));
+        if let Some(mut att) = att {
+            att.kyc_verified = true;
+            env.storage()
+                .persistent()
+                .set(&DataKey::IdentityAttestation(commitment), &att);
+        }
+        Ok(())
+    }
+
+    /// Return the aggregated attestation for an identity group, if any.
+    ///
+    /// Overlays the group's KYC status: if the commitment has a bound nullifier
+    /// (`bind_kyc`), `kyc_verified` is forced true even when a later
+    /// `update_group_score` stored an attestation with it false — KYC, once
+    /// bound, is not silently dropped by a re-score.
+    pub fn get_group_attestation(env: Env, commitment: BytesN<32>) -> Option<AttestationData> {
+        let att: Option<AttestationData> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::IdentityAttestation(commitment.clone()));
+        att.map(|mut att| {
+            if env
+                .storage()
+                .persistent()
+                .get::<DataKey, bool>(&DataKey::KycVerified(commitment))
+                .unwrap_or(false)
+            {
+                att.kyc_verified = true;
+            }
+            att
+        })
+    }
+
+    /// Whether an identity group has completed KYC (a nullifier is bound).
+    pub fn is_kyc_verified(env: Env, commitment: BytesN<32>) -> bool {
+        env.storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::KycVerified(commitment))
+            .unwrap_or(false)
     }
 
     /// Remove a wallet from its identity group.
@@ -369,5 +447,68 @@ mod tests {
             client.try_leave_group(&stranger),
             Err(Ok(Error::AttestationNotFound))
         );
+    }
+
+    fn nullifier(env: &Env, byte: u8) -> BytesN<32> {
+        BytesN::from_array(env, &[byte; 32])
+    }
+
+    // The actual Sybil-resistance demonstration: one verified human (one stable
+    // nullifier) can bind exactly one identity commitment. A second, different
+    // commitment with the same nullifier — the "mint a fresh identity to escape a
+    // bad group" attack — is rejected.
+    #[test]
+    fn bind_kyc_rejects_second_identity_for_same_nullifier() {
+        let (env, client, attestor) = setup();
+        let good = commitment(&env, 1);
+        let fresh = commitment(&env, 2);
+        let null = nullifier(&env, 42);
+
+        // First identity binds fine.
+        client.bind_kyc(&attestor, &good, &null);
+        assert!(client.is_kyc_verified(&good));
+        // Re-binding the SAME identity is idempotent.
+        client.bind_kyc(&attestor, &good, &null);
+        // A DIFFERENT commitment with the same human's nullifier is blocked.
+        assert_eq!(
+            client.try_bind_kyc(&attestor, &fresh, &null),
+            Err(Ok(Error::NullifierAlreadyBound))
+        );
+        assert!(!client.is_kyc_verified(&fresh));
+    }
+
+    // bind_kyc is attestor-gated (reuses the update_group_score gate).
+    #[test]
+    fn bind_kyc_rejects_non_attestor() {
+        let (env, client, _attestor) = setup();
+        let stranger = Address::generate(&env);
+        let c = commitment(&env, 5);
+        let null = nullifier(&env, 7);
+        assert_eq!(
+            client.try_bind_kyc(&stranger, &c, &null),
+            Err(Ok(Error::UnauthorizedAttestor))
+        );
+    }
+
+    // KYC, once bound, is reflected on the group attestation — and survives a
+    // later re-score that carried kyc_verified=false (overlay in get_group_attestation).
+    #[test]
+    fn bind_kyc_sets_group_kyc_even_when_bound_before_score() {
+        let (env, client, attestor) = setup();
+        let wallet = Address::generate(&env);
+        let c = commitment(&env, 8);
+        client.register_wallet(&wallet, &c, &no_proof(&env));
+
+        // KYC happens before any score exists.
+        client.bind_kyc(&attestor, &c, &nullifier(&env, 9));
+
+        // A later score is stored with kyc_verified=false...
+        let mut att = attestation(&env, &wallet, c.clone());
+        att.kyc_verified = false;
+        client.update_group_score(&attestor, &c, &att);
+
+        // ...but the read overlays the bound KYC status.
+        let read = client.get_group_attestation(&c).unwrap();
+        assert!(read.kyc_verified);
     }
 }
