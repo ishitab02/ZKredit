@@ -1,4 +1,4 @@
-.PHONY: bootstrap build-contracts test-contracts deploy-testnet bindings migrate-attestor frontend-types e2e demo-data docker-up
+.PHONY: bootstrap build-contracts test-contracts deploy-testnet deploy-mainnet bindings migrate-attestor frontend-types e2e demo-data docker-up
 
 MAKEFLAGS += --no-print-directory
 
@@ -38,6 +38,11 @@ test-contracts:
 
 deploy-testnet:
 	infra/scripts/deploy-testnet.sh
+
+# Minimal mainnet deploy (3 core contracts; DEPLOY_LENDING=1 to add the mock
+# pool). Costs real XLM — the script prompts before spending.
+deploy-mainnet:
+	infra/scripts/deploy-mainnet.sh
 
 bindings:
 	rm -rf contracts/bindings/ts/risk-attestation
