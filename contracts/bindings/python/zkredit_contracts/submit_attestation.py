@@ -53,7 +53,7 @@ class AttestationParams:
             ("distilled_model_hash", self.distilled_model_hash, 32),
             ("proof_or_hash", self.proof_or_hash, 32),
         ):
-            if not isinstance(value, (bytes, bytearray)) or len(value) != length:
+            if not isinstance(value, bytes | bytearray) or len(value) != length:
                 raise ValueError(f"{name} must be {length} bytes")
 
 
@@ -76,21 +76,25 @@ def _build_attestation_scval(params: AttestationParams):
         else scval.to_void()
     )
 
+    fields = {
+        "wallet": scval.to_address(params.wallet),
+        "risk_bucket": scval.to_uint32(params.risk_bucket),
+        "confidence": scval.to_uint32(params.confidence),
+        "full_model_hash": hash_val(params.full_model_hash),
+        "distilled_model_hash": hash_val(params.distilled_model_hash),
+        "proof_or_hash": hash_val(params.proof_or_hash),
+        "zk_verified": scval.to_bool(params.zk_verified),
+        "attestor": scval.to_address(params.attestor),
+        "issued_at": scval.to_uint64(params.issued_at),
+        "expires_at": scval.to_uint64(params.expires_at),
+        "kyc_verified": scval.to_bool(params.kyc_verified),
+        "identity_commitment": identity_commitment,
+    }
+    # Soroban requires struct SCMap entries sorted by key; stellar-sdk >=12's
+    # ``scval.to_map`` preserves insertion order (it no longer sorts), so sort by
+    # field symbol here or the host rejects it with "ScMap was not sorted by key".
     return scval.to_map(
-        {
-            scval.to_symbol("wallet"): scval.to_address(params.wallet),
-            scval.to_symbol("risk_bucket"): scval.to_uint32(params.risk_bucket),
-            scval.to_symbol("confidence"): scval.to_uint32(params.confidence),
-            scval.to_symbol("full_model_hash"): hash_val(params.full_model_hash),
-            scval.to_symbol("distilled_model_hash"): hash_val(params.distilled_model_hash),
-            scval.to_symbol("proof_or_hash"): hash_val(params.proof_or_hash),
-            scval.to_symbol("zk_verified"): scval.to_bool(params.zk_verified),
-            scval.to_symbol("attestor"): scval.to_address(params.attestor),
-            scval.to_symbol("issued_at"): scval.to_uint64(params.issued_at),
-            scval.to_symbol("expires_at"): scval.to_uint64(params.expires_at),
-            scval.to_symbol("kyc_verified"): scval.to_bool(params.kyc_verified),
-            scval.to_symbol("identity_commitment"): identity_commitment,
-        }
+        {scval.to_symbol(name): fields[name] for name in sorted(fields)}
     )
 
 

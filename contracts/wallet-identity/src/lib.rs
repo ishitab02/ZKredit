@@ -302,7 +302,9 @@ impl WalletIdentity {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{contract as sc_contract, contractimpl as sc_contractimpl, symbol_short, Bytes, BytesN};
+    use soroban_sdk::{
+        contract as sc_contract, contractimpl as sc_contractimpl, symbol_short, Bytes, BytesN,
+    };
 
     // Minimal AttestorRegistry stand-in: only the wired `allowed` attestor passes.
     #[sc_contract]
@@ -311,11 +313,16 @@ mod tests {
     #[sc_contractimpl]
     impl MockRegistry {
         pub fn __constructor(env: Env, allowed: Address) {
-            env.storage().instance().set(&symbol_short!("allowed"), &allowed);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("allowed"), &allowed);
         }
         pub fn is_attestor(env: Env, attestor: Address) -> bool {
-            let allowed: Address =
-                env.storage().instance().get(&symbol_short!("allowed")).unwrap();
+            let allowed: Address = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("allowed"))
+                .unwrap();
             attestor == allowed
         }
     }

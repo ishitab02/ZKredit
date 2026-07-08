@@ -95,12 +95,13 @@ async def test_normalize_declined_has_no_document() -> None:
 
 # --- store + webhook flow ---------------------------------------------------
 
+from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
 import api.routes.kyc as kyc_routes  # noqa: E402
 from api.kyc import store  # noqa: E402
 from api.kyc.provider import KycEvent  # noqa: E402
 from ml.data.db import create_session_factory, init_db  # noqa: E402
-from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
 
 COMMITMENT_A = "aa" * 32
 COMMITMENT_B = "bb" * 32

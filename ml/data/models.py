@@ -136,7 +136,9 @@ class KycVerification(Base):
     # declined/in-review webhook has a status but no document). Unique so a second
     # identity for the same human is caught here too (belt-and-suspenders with the
     # contract's NullifierAlreadyBound); NULLs are distinct, so pending rows are OK.
-    nullifier: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
+    nullifier: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, nullable=True
+    )
     provider_session_id: Mapped[str] = mapped_column(String(128))
     dedupe_flag: Mapped[bool] = mapped_column(Boolean, default=False)
     # approved | declined | in_review | pending | abandoned

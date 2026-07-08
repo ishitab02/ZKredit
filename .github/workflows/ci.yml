@@ -7,9 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  # Soroban contract unit tests. rustup auto-honors rust-toolchain.toml
-  # (1.94.1 + wasm target) on the runner.
-  contract-tests:
+  # Soroban contracts: format + clippy lint, wasm release build, unit tests.
+  # rustup auto-honors rust-toolchain.toml (1.94.1 + wasm target + rustfmt/clippy).
+  contracts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,13 @@ jobs:
             ~/.cargo/git
             contracts/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
-      - name: Run contract tests
+      - name: Rustfmt (check)
+        run: cd contracts && cargo fmt --all --check
+      - name: Clippy (lint)
+        run: cd contracts && cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build contracts (wasm release)
+        run: make build-contracts
+      - name: Contract tests
         run: make test-contracts
 
   # Backend: lint + migrations against real Postgres + the pytest suite.
@@ -77,6 +83,12 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Lint (eslint)
+        # Non-blocking: the eslint config + a handful of rule violations are
+        # pre-existing debt (tracked as a follow-up). Reported in the log so the
+        # cleanup has a baseline, but it does not fail the build yet.
+        run: npm run lint
+        continue-on-error: true
       - name: Unit tests (Vitest)
         run: npm test
       - name: Build

@@ -135,7 +135,11 @@ def _merge_wallets(
     merged_balances: list[dict] = []
     for w in wallets:
         for balance in w.balances:
-            key = (balance.get("asset_type"), balance.get("asset_code"), balance.get("asset_issuer"))
+            key = (
+                balance.get("asset_type"),
+                balance.get("asset_code"),
+                balance.get("asset_issuer"),
+            )
             if key in seen_assets:
                 continue
             seen_assets.add(key)

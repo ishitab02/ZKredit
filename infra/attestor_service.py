@@ -101,12 +101,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_OPTIONS(self) -> None:
+    def do_OPTIONS(self) -> None:  # noqa: N802 — http.server dispatches by do_<METHOD>
         self.send_response(204)
         self._cors()
         self.end_headers()
 
-    def do_POST(self) -> None:
+    def do_POST(self) -> None:  # noqa: N802 — http.server dispatches by do_<METHOD>
         if self.path.rstrip("/") != "/prepare":
             self._json(404, {"error": "not found"})
             return
