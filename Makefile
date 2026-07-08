@@ -28,10 +28,14 @@ build-contracts:
 	# both scale with byte size. Optimized IN PLACE so deploy/bindings paths are
 	# unchanged. ~32% smaller than an un-tuned build (profile + this pass).
 	@OPT=$$(command -v stellar || command -v soroban); \
-	for w in $(CONTRACT_WASMS); do \
-	  f=$(WASM_RELEASE_DIR)/$$w.wasm; \
-	  $$OPT contract optimize --wasm $$f --wasm-out $$f; \
-	done
+	if [ -z "$$OPT" ]; then \
+	  echo "stellar/soroban CLI not found; skipping wasm size-optimize pass (build/CI only verifies compilation)"; \
+	else \
+	  for w in $(CONTRACT_WASMS); do \
+	    f=$(WASM_RELEASE_DIR)/$$w.wasm; \
+	    $$OPT contract optimize --wasm $$f --wasm-out $$f; \
+	  done; \
+	fi
 
 test-contracts:
 	cd contracts && cargo test
