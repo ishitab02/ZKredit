@@ -34,6 +34,16 @@ RUN curl -L https://risczero.com/install | bash \
 # --- Build the host binary with GPU proving enabled ---
 # The guest ELF is embedded at build time by risc0-build, so there is no separate
 # ELF to copy. Path deps (../methods, ../model) resolve within the copied tree.
+#
+# risc0-circuit-rv32im-sys's build.rs defaults nvcc to `-arch=native`, which
+# queries a live GPU via the CUDA runtime to detect its compute capability --
+# but a `docker build` step has no GPU device passed through (even on a
+# GPU-backed builder host), so autodetection fails with a hard compile error.
+# Its build.rs skips `-arch=native` if NVCC_APPEND_FLAGS is set, so pin the
+# target GPU's compute capability explicitly. sm_89 = Ada Lovelace (L4, RTX 4090).
+# Override ARG CUDA_ARCH at build time for a different GPU (A10=sm_86, A100=sm_80).
+ARG CUDA_ARCH=sm_89
+ENV NVCC_APPEND_FLAGS="-arch=${CUDA_ARCH}"
 WORKDIR /build
 COPY ml/risc0 ./ml/risc0
 ENV RUSTFLAGS="-C target-cpu=native"
