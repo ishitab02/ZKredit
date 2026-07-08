@@ -117,3 +117,35 @@ class ProvingJob(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class KycVerification(Base):
+    """One KYC verification result bound to an identity commitment (Phase 3.3).
+
+    Deliberately holds NO raw PII: only the opaque 32-byte Sybil ``nullifier``
+    (hex) derived off-chain from the document under a secret pepper, plus the
+    provider's session id for audit. ``nullifier`` is unique — the DB mirror of
+    the on-chain ``NullifierAlreadyBound`` invariant (one human → one identity).
+    """
+
+    __tablename__ = "kyc_verifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    commitment: Mapped[str] = mapped_column(String(64), index=True)
+    # 32-byte HMAC nullifier as hex; set only on an approved verification (a
+    # declined/in-review webhook has a status but no document). Unique so a second
+    # identity for the same human is caught here too (belt-and-suspenders with the
+    # contract's NullifierAlreadyBound); NULLs are distinct, so pending rows are OK.
+    nullifier: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
+    provider_session_id: Mapped[str] = mapped_column(String(128))
+    dedupe_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    # approved | declined | in_review | pending | abandoned
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    # tx hash of the on-chain bind_kyc submission, when it succeeded.
+    bind_tx_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

@@ -271,3 +271,51 @@ def build_risc0_attestation_cosigned_xdr(
     prepared.transaction.operations[0].auth = signed_auth
 
     return prepared.to_xdr()
+
+
+def submit_bind_kyc(
+    *,
+    contract_id: str,
+    attestor: str,
+    commitment: bytes,
+    nullifier: bytes,
+    attestor_seed: str,
+    rpc_url: str = "https://soroban-testnet.stellar.org",
+    network_passphrase: str = "Test SDF Network ; September 2015",
+    timeout: int = 30,
+) -> str:
+    """Call ``WalletIdentity.bind_kyc(attestor, commitment, nullifier)``.
+
+    Attestor-authed only: the attestor is the source account, so its
+    ``require_auth`` is a source-account credential covered by this signature —
+    no interactive wallet co-sign is needed (unlike the attestation path).
+    ``commitment``/``nullifier`` are 32-byte values. Returns the tx hash.
+    """
+    if len(commitment) != 32 or len(nullifier) != 32:
+        raise ValueError("commitment and nullifier must be 32 bytes")
+    keypair = Keypair.from_secret(attestor_seed)
+    server = SorobanServer(rpc_url)
+    source = server.load_account(keypair.public_key)
+
+    tx = (
+        TransactionBuilder(
+            source_account=source,
+            network_passphrase=network_passphrase,
+            base_fee=100000,
+        )
+        .set_timeout(timeout)
+        .append_invoke_contract_function_op(
+            contract_id=contract_id,
+            function_name="bind_kyc",
+            parameters=[
+                StellarAddress(attestor).to_xdr_sc_val(),
+                scval.to_bytes(commitment),
+                scval.to_bytes(nullifier),
+            ],
+        )
+        .build()
+    )
+
+    tx.sign(keypair)
+    response = server.submit_transaction(tx)
+    return response["hash"]

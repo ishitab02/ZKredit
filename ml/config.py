@@ -96,6 +96,19 @@ class Settings(BaseSettings):
     session_secret: str | None = None
     session_ttl_seconds: int = 24 * 60 * 60
 
+    # KYC / Sybil resistance (Phase 3, Didit provider). All secrets — set via fly
+    # secrets, never committed. When keys are unset the KYC endpoints report the
+    # provider as unconfigured rather than failing mid-flow.
+    didit_api_key: str | None = None
+    didit_webhook_secret: str | None = None
+    didit_workflow_id: str | None = None
+    didit_api_base: str = "https://verification.didit.me"
+    didit_callback_url: str | None = None
+    # Secret pepper for the nullifier HMAC. MUST live in a real secret manager and
+    # rotate per a runbook (a leak lets an attacker precompute nullifiers for known
+    # identities and front-run bind_kyc). No default: absent → KYC binding is off.
+    kyc_nullifier_pepper: str | None = None
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse ``cors_allowed_origins`` into a clean list of exact origins."""
