@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { prepareAttestation } from "./attestor";
+import { getAttestationJob, prepareAttestation } from "./attestor";
 
 const WALLET = "G" + "A".repeat(55);
 
@@ -51,5 +51,41 @@ describe("prepareAttestation (unified API cutover, 1.7)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(prepareAttestation(WALLET)).rejects.toThrow("rate limited");
+  });
+
+  it("reads a queued job status with credentials", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        job_id: "job-123",
+        status: "queued",
+        risk_bucket: 2,
+        confidence: 0.9,
+        distilled_model_hash: "bb",
+        submission_mode: "live_cosign",
+        submission_detail: "waiting",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getAttestationJob("job-123");
+
+    expect("job_id" in result && result.job_id).toBe("job-123");
+    const [jobUrl, jobOpts] = fetchMock.mock.calls[0];
+    expect(String(jobUrl)).toContain("/api/v1/attest/jobs/job-123");
+    expect(jobOpts.credentials).toBe("include");
+  });
+
+  it("maps missing job-status support to a dedicated error", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: "not found" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getAttestationJob("job-404")).rejects.toMatchObject({
+      kind: "job_status_unavailable",
+    });
   });
 });

@@ -22,6 +22,7 @@ from api.contract_stub import (
 from api.deps import get_artifacts, get_redis, get_session_factory
 from api.rate_limit import enforce_attest_limits
 from api.schemas import (
+    AttestationJobResponse,
     AttestationPrepareResponse,
     AttestationRecordResponse,
     AttestationResponse,
@@ -152,6 +153,25 @@ async def prepare_attestation(
             detail="Attestation was scored, but building the co-sign transaction failed.",
         ) from err
     return _to_prepare_response(result, prepared)
+
+
+@router.get("/attest/jobs/{job_id}", response_model=AttestationJobResponse)
+async def get_attestation_job(job_id: str) -> AttestationJobResponse:
+    """Future async proving job-status route.
+
+    This route is intentionally present in the API surface now so the frontend
+    and deploy docs can target a stable path. The current repo does not yet ship
+    the persistent proving-job store / worker needed to serve real job states,
+    so the handler returns an explicit 501 until that backend work lands.
+    """
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "Async proving jobs are not configured on this deployment yet. "
+            "Implement the proving_jobs store and worker before enabling "
+            "/api/v1/attest/jobs/{job_id}."
+        ),
+    )
 
 
 async def _try_live_receipt(

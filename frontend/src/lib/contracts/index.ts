@@ -1,4 +1,5 @@
 export * from './types'
+export { ContractRpcError } from './errors'
 export * from './risk-attestation'
 export * from './mock-lending-pool'
 export * from './wallet-identity'

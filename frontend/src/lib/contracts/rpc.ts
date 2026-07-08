@@ -8,6 +8,7 @@ import {
   xdr,
 } from '@stellar/stellar-sdk'
 import { NETWORK } from './config'
+import { ContractRpcError } from './errors'
 import { signWithFreighter } from '../freighter'
 
 // Inclusion fee (stroops). prepareTransaction adds the Soroban resource fee on top.
@@ -26,6 +27,34 @@ const SIMULATION_SOURCE = new Account(
 
 function server() {
   return new rpc.Server(NETWORK.rpcUrl)
+}
+
+function makeRpcError(kind: ContractRpcError['kind'], message: string): ContractRpcError {
+  const err = new Error(message) as ContractRpcError
+  err.kind = kind
+  return err
+}
+
+function parseSourceAccountError(error: unknown): ContractRpcError {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/not found|404|unknown account|missing account|does not exist/i.test(message)) {
+    return makeRpcError(
+      'source_account_unavailable',
+      'This Stellar testnet wallet is not funded or does not exist on Soroban yet.',
+    )
+  }
+  return makeRpcError('source_account_unavailable', message)
+}
+
+function parseSubmissionError(prefix: string, details: unknown): ContractRpcError {
+  const message = typeof details === 'string' ? details : JSON.stringify(details)
+  if (/insufficient|balance|underfunded|no account|tx_no_account/i.test(message)) {
+    return makeRpcError(
+      'source_account_unavailable',
+      'This Stellar testnet wallet does not have enough balance to submit the transaction.',
+    )
+  }
+  return makeRpcError('submit_failed', `${prefix}: ${message}`)
 }
 
 /**
@@ -82,7 +111,12 @@ export async function invokeContractCall(
   }
 
   const srv = server()
-  const source = await srv.getAccount(sourceAddress)
+  let source: Account
+  try {
+    source = await srv.getAccount(sourceAddress)
+  } catch (error) {
+    throw parseSourceAccountError(error)
+  }
   const contract = new Contract(contractId)
 
   const built = new TransactionBuilder(source, {
@@ -105,21 +139,21 @@ export async function invokeContractCall(
 
   const sent = await srv.sendTransaction(signedTx)
   if (sent.status === 'ERROR') {
-    throw new Error(`Transaction submission failed: ${JSON.stringify(sent.errorResult)}`)
+    throw parseSubmissionError('Transaction submission failed', sent.errorResult)
   }
 
   const deadline = Date.now() + POLL_TIMEOUT_MS
   let getResp = await srv.getTransaction(sent.hash)
   while (getResp.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
     if (Date.now() > deadline) {
-      throw new Error(`Timed out waiting for transaction ${sent.hash}`)
+      throw makeRpcError('submit_timeout', `Timed out waiting for transaction ${sent.hash}`)
     }
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
     getResp = await srv.getTransaction(sent.hash)
   }
 
   if (getResp.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
-    throw new Error(`Transaction ${sent.hash} failed on-chain (${getResp.status})`)
+    throw makeRpcError('chain_failed', `Transaction ${sent.hash} failed on-chain (${getResp.status})`)
   }
   return sent.hash
 }
@@ -153,21 +187,21 @@ export async function submitCosignedAttestation(
 
   const sent = await srv.sendTransaction(signedTx)
   if (sent.status === 'ERROR') {
-    throw new Error(`Attestation submission failed: ${JSON.stringify(sent.errorResult)}`)
+    throw parseSubmissionError('Attestation submission failed', sent.errorResult)
   }
 
   const deadline = Date.now() + POLL_TIMEOUT_MS
   let getResp = await srv.getTransaction(sent.hash)
   while (getResp.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
     if (Date.now() > deadline) {
-      throw new Error(`Timed out waiting for transaction ${sent.hash}`)
+      throw makeRpcError('submit_timeout', `Timed out waiting for transaction ${sent.hash}`)
     }
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
     getResp = await srv.getTransaction(sent.hash)
   }
 
   if (getResp.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
-    throw new Error(`Attestation ${sent.hash} failed on-chain (${getResp.status})`)
+    throw makeRpcError('chain_failed', `Attestation ${sent.hash} failed on-chain (${getResp.status})`)
   }
   return sent.hash
 }

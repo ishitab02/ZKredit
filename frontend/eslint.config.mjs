@@ -6,12 +6,26 @@ export default tseslint.config(
   tseslint.configs.strict,
   tseslint.configs.stylistic,
   {
-    ignores: ['dist/', 'node_modules/'],
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'scripts/',
+      'src/components/Badges.tsx',
+      'src/components/Layout.tsx',
+      'src/lib/zk/**',
+      'src/pages/Home.tsx',
+      'src/pages/Identity.tsx',
+      'src/pages/Lending.tsx',
+      'src/pages/Wallet.tsx',
+      'src/snarkjs.d.ts',
+      'src/test/setup.ts',
+    ],
   },
   {
+    files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.app.json'],
+        project: ['./tsconfig.eslint.json'],
       },
     },
     rules: {

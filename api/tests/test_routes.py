@@ -266,6 +266,14 @@ async def test_prepare_route_uses_live_receipt(monkeypatch: pytest.MonkeyPatch) 
     assert body.submission_mode == "live_cosign"
 
 
+@pytest.mark.asyncio
+async def test_attestation_job_route_is_explicitly_not_configured_yet() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await v1.get_attestation_job("job-123")
+    assert exc.value.status_code == 501
+    assert "Async proving jobs are not configured" in str(exc.value.detail)
+
+
 def test_stellar_address_validation_pattern() -> None:
     assert re.fullmatch(STELLAR_ADDRESS_PATTERN, ADDRESS)
     assert not re.fullmatch(STELLAR_ADDRESS_PATTERN, "not-a-stellar-address")

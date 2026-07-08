@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { ReactLenis, type LenisRef } from "lenis/react";
 import PageGlow from "./components/PageGlow";
 import Nav from "./components/Nav";
 import Footer from "./components/Footer";
 import LandingPage from "./pages/LandingPage";
-import AttestationPage from "./pages/AttestationPage";
 import { getSiteRoute } from "./lib/navigation";
+
+const AttestationPage = lazy(() => import("./pages/AttestationPage"));
 
 export default function App() {
   const [route, setRoute] = useState(() => getSiteRoute());
@@ -54,10 +55,15 @@ export default function App() {
         Skip to content
       </a>
       <PageGlow />
-      <Nav route={route} walletAddress={walletAddress} onWalletConnected={setWalletAddress} />
+      <Nav route={route} />
       <main id="main">
         {isAttestation ? (
-          <AttestationPage walletAddress={walletAddress} onWalletConnected={setWalletAddress} />
+          <Suspense fallback={<RouteFallback />}>
+            <AttestationPage
+              walletAddress={walletAddress}
+              onWalletConnected={setWalletAddress}
+            />
+          </Suspense>
         ) : (
           <LandingPage />
         )}
@@ -78,5 +84,24 @@ export default function App() {
     >
       {content}
     </ReactLenis>
+  );
+}
+
+function RouteFallback() {
+  return (
+    <section className="relative overflow-hidden pt-28 pb-24 md:pt-32 md:pb-36">
+      <div className="container-page relative z-10">
+        <div className="mx-auto max-w-2xl">
+          <div className="surface p-6 md:p-8">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-fog-faint">
+              Loading attestation route
+            </p>
+            <p className="mt-3 text-sm text-fog-muted">
+              Preparing the wallet attestation flow and contract client.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

@@ -71,6 +71,30 @@ class AttestationPrepareResponse(AttestationResponse):
     )
 
 
+class AttestationJobResponse(BaseModel):
+    """Future async proving job status response for queued attestation prep."""
+
+    job_id: str
+    status: str = Field(
+        description="Queued/proving/completed/failed style backend job status.",
+    )
+    partial_xdr: str | None = Field(
+        default=None,
+        description="Present once the queued proving job has completed and the wallet can sign.",
+    )
+    risk_bucket: int | None = Field(default=None, ge=0, le=4)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    distilled_model_hash: str | None = None
+    submission_mode: str | None = Field(
+        default=None,
+        description="How the completed co-sign transaction was prepared.",
+    )
+    submission_detail: str | None = Field(
+        default=None,
+        description="Human-readable explanation of the current job or completion path.",
+    )
+
+
 class AttestationRecordResponse(BaseModel):
     """A stored on-chain attestation (read path)."""
 

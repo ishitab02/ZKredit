@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-type Props = { className?: string };
+interface Props {
+  className?: string;
+}
 
 /** Interactive multi-green point-cloud sphere: slow drift, water-like ripple,
  *  hover jiggle, firefly core. Vanilla Three.js; respects reduced motion. */
@@ -291,7 +293,10 @@ function makeGlowTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Could not create 2D canvas context for glow texture.");
+  }
   const g = ctx.createRadialGradient(
     size / 2,
     size / 2,

@@ -1,0 +1,16 @@
+{
+  "name": "zkredit-root",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace frontend",
+    "dev": "npm run --prefix frontend dev"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1",
+    "vite": "^5.4.21"
+  }
+}

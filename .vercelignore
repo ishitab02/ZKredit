@@ -1,0 +1,11 @@
+.git
+/api
+/contracts
+/docs
+/infra
+/ml
+/model_store
+poetry.lock
+README.md
+*.md
+*.log

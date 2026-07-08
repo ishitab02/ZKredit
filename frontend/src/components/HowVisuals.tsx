@@ -91,7 +91,7 @@ export function NeuralScore() {
     { x: 110, ys: [44, 88, 132, 176] },
     { x: 178, ys: [80, 128] },
   ];
-  const connect: Array<[number[], number[]]> = [];
+  const connect: [[number, number], [number, number]][] = [];
   cols[0].ys.forEach((y1) =>
     cols[1].ys.forEach((y2) => connect.push([[cols[0].x, y1], [cols[1].x, y2]])),
   );

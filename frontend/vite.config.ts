@@ -13,6 +13,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
+          motion: ["framer-motion"],
+          stellar: ["@stellar/freighter-api", "@stellar/stellar-sdk"],
           three: ["three"],
         },
       },
