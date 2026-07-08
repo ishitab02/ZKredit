@@ -19,3 +19,19 @@ rust-version = "1.84.0"
 
 [workspace.dependencies]
 soroban-sdk = { version = "25.3.1" }
+
+# Size-optimized WASM for cheaper mainnet upload + rent (both scale with byte
+# size). Stellar's recommended contract profile: opt for size, abort on panic
+# (no unwinding tables), fat LTO + single codegen unit, strip symbols. We KEEP
+# overflow-checks on — these are financial contracts and the size cost is tiny
+# next to the correctness guarantee. Run `stellar contract optimize` (wasm-opt)
+# on top for a further pass before deploying.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

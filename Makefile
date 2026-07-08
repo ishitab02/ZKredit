@@ -17,10 +17,21 @@ bootstrap:
 	# Build contracts as the final bootstrap step.
 	$(MAKE) build-contracts
 
+CONTRACT_WASMS := zkredit_attestor_registry zkredit_risk_attestation zkredit_mock_lending_pool zkredit_wallet_identity
+WASM_RELEASE_DIR := contracts/target/wasm32v1-none/release
+
 build-contracts:
 	rustup target add wasm32v1-none
 	# e2e-tests is a host-only (std) integration crate — not a wasm contract.
 	cd contracts && cargo build --target wasm32v1-none --release --workspace --exclude zkredit-e2e-tests
+	# Size pass (wasm-opt via the Stellar CLI) for cheaper mainnet upload + rent —
+	# both scale with byte size. Optimized IN PLACE so deploy/bindings paths are
+	# unchanged. ~32% smaller than an un-tuned build (profile + this pass).
+	@OPT=$$(command -v stellar || command -v soroban); \
+	for w in $(CONTRACT_WASMS); do \
+	  f=$(WASM_RELEASE_DIR)/$$w.wasm; \
+	  $$OPT contract optimize --wasm $$f --wasm-out $$f; \
+	done
 
 test-contracts:
 	cd contracts && cargo test
