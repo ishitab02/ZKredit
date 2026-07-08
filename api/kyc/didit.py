@@ -164,6 +164,4 @@ def _extract_dedupe(decision: Any) -> bool:
             if isinstance(w, dict) and "duplicate" in str(w.get("risk", "")).lower():
                 return True
     aml = decision.get("aml")
-    if isinstance(aml, dict) and aml.get("duplicate_of"):
-        return True
-    return False
+    return bool(isinstance(aml, dict) and aml.get("duplicate_of"))

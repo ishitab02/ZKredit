@@ -161,7 +161,10 @@ mod tests {
         assert!(thin.apr_basis_points >= 3000);
         assert!(thin.collateral_ratio_basis_points >= 20000);
         // A KYC-verified wallet, by contrast, gets real borrowing capacity.
-        assert_eq!(terms_from_bucket(att(&env, 2, true, true)).max_principal, 1000);
+        assert_eq!(
+            terms_from_bucket(att(&env, 2, true, true)).max_principal,
+            1000
+        );
     }
 
     #[test]

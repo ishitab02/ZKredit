@@ -39,7 +39,11 @@ class WalletData:
     @property
     def self_addresses(self) -> frozenset[str]:
         """The set of addresses counted as "self" for send/recv attribution."""
-        return self.member_addresses if self.member_addresses is not None else frozenset({self.address})
+        return (
+            self.member_addresses
+            if self.member_addresses is not None
+            else frozenset({self.address})
+        )
 
 
 @dataclass(frozen=True)
