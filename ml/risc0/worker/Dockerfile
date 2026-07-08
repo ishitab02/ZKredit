@@ -13,13 +13,15 @@
 FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-# protobuf-compiler (protoc) is required: risc0 3.0.5's native (Docker-free)
-# Groth16 wrap pulls `circom-witnesscalc`, whose build script uses prost-build,
-# which needs `protoc`. The committed host Cargo.lock confirms protoc is the only
-# extra system build tool needed (no cmake/clang/nasm consumers in the tree).
+# risc0 3.0.5's native (Docker-free) Groth16 wrap pulls `circom-witnesscalc`,
+# which needs two system build tools (confirmed by resolving the full `-F cuda`
+# dep tree with `cargo tree`, not just the base lock):
+#   - protobuf-compiler (protoc)  <- prost-build
+#   - clang + libclang-dev        <- bindgen/clang-sys, for its graph_witness.h
+# The rest of the tree needs only a C compiler (build-essential); no cmake/nasm.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl build-essential pkg-config libssl-dev git ca-certificates \
-        protobuf-compiler python3 python3-pip \
+        protobuf-compiler clang libclang-dev python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Rust ---
