@@ -18,11 +18,13 @@ authorization entry server-side. The returned XDR is handed to the wallet
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from stellar_sdk import Address as StellarAddress
 from stellar_sdk import Keypair, SorobanServer, TransactionBuilder, scval, xdr
 from stellar_sdk.auth import authorize_entry
+from stellar_sdk.soroban_rpc import GetTransactionStatus, SendTransactionStatus
 
 
 @dataclass(frozen=True)
@@ -320,6 +322,26 @@ def submit_bind_kyc(
         .build()
     )
 
-    tx.sign(keypair)
-    response = server.submit_transaction(tx)
-    return response["hash"]
+    # Soroban requires a recording simulation to assemble the footprint + resource
+    # fees before signing, then send + poll (there is no one-shot submit for
+    # Soroban txs). The attestor's require_auth is a source-account credential, so
+    # signing the prepared envelope is all the auth bind_kyc needs.
+    prepared = server.prepare_transaction(tx)
+    prepared.sign(keypair)
+    send = server.send_transaction(prepared)
+    if send.status != SendTransactionStatus.PENDING:
+        raise RuntimeError(
+            f"bind_kyc send failed: {send.status}"
+            f" {getattr(send, 'error_result_xdr', '') or ''}".rstrip()
+        )
+    # Manual poll (get_transaction + sleep) rather than SorobanServer.poll_transaction,
+    # which isn't present in every stellar-sdk 12.x — this path runs in a worker
+    # thread, so the blocking sleep is fine.
+    deadline = time.monotonic() + timeout
+    result = server.get_transaction(send.hash)
+    while result.status == GetTransactionStatus.NOT_FOUND and time.monotonic() < deadline:
+        time.sleep(1)
+        result = server.get_transaction(send.hash)
+    if result.status != GetTransactionStatus.SUCCESS:
+        raise RuntimeError(f"bind_kyc did not succeed on-chain: {result.status}")
+    return send.hash

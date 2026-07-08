@@ -56,12 +56,20 @@ COPY ml ./ml
 COPY api ./api
 COPY migrations ./migrations
 COPY scripts ./scripts
+# Soroban Python bindings (zkredit_contracts): the on-chain submission helpers
+# for attestation co-sign and KYC bind_kyc. api/contract_stub.py and
+# api/kyc/service.py import `zkredit_contracts` at runtime; without this the
+# import fails (ModuleNotFoundError) and every on-chain write silently degrades.
+COPY contracts/bindings/python ./contracts/bindings/python
 # Real trained model artifacts (full.joblib / distilled.joblib / registry.json),
 # trained on the population data. Baked into the image so the API serves real
 # scores. (.dockerignore is configured to include these.)
 COPY model_store ./model_store
 
-RUN pip install --upgrade pip && pip install .
+# Install the app, then the Soroban bindings package (its only dep, stellar-sdk,
+# is already resolved by the app install above, so --no-deps keeps versions pinned).
+RUN pip install --upgrade pip && pip install . \
+    && pip install --no-deps ./contracts/bindings/python
 
 # Safety net: if model_store somehow lacks a trained model, generate a
 # placeholder so the API still boots. No-op when the real model is present.

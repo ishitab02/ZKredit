@@ -61,9 +61,11 @@ async def submit_bind_kyc_onchain(
     ):
         return None
 
-    from contracts.bindings.python.zkredit_contracts.submit_attestation import (
-        submit_bind_kyc,
-    )
+    # submit_bind_kyc is intentionally not re-exported from the package __init__
+    # (attestor-only path), so import it from the submodule directly. The package
+    # is pip-installed in the image and on sys.path in local dev (see
+    # api/contract_stub.py, which inserts contracts/bindings/python).
+    from zkredit_contracts.submit_attestation import submit_bind_kyc
 
     return await asyncio.to_thread(
         submit_bind_kyc,
