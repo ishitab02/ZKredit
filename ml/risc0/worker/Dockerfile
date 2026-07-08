@@ -28,14 +28,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-# --- RISC Zero toolchain: rust guest toolchain, r0vm, cargo-risczero ---
-# `rzup install` pulls the default component set (incl. the Groth16 prover). The
-# native GPU Groth16 path is the assumption to VERIFY on first build — see the
-# "Verify the native Groth16 path" section in ml/risc0/worker/README.md. If a
-# newer rzup names the GPU groth16 prover as a separate component, add it here.
+# --- RISC Zero toolchain, pinned to 3.0.5 (must match contracts/shared/src/risc0.rs
+# and the host Cargo.lock, or receipts won't verify on-chain) ---
+# Same rust/cargo-risczero/r0vm pins as the repo-root Dockerfile, PLUS the
+# `risc0-groth16` component: the default `rzup install` does NOT include the
+# native Groth16 prover, so a standalone worker (which does the STARK→SNARK wrap
+# locally, unlike the old Fly client that offloaded to Bento) fails at prove time
+# with "Missing required risc0-groth16 rzup component ... Version not found: 0.1.0".
+# 0.1.0 is the component version risc0-zkvm 3.0.5's prover requests.
 ENV PATH="/root/.risc0/bin:${PATH}"
 RUN curl -L https://risczero.com/install | bash \
-    && rzup install
+    && rzup install rust 1.94.1 \
+    && rzup install cargo-risczero 3.0.5 \
+    && rzup install r0vm 3.0.5 \
+    && rzup install risc0-groth16 0.1.0
 
 # --- Build the host binary with GPU proving enabled ---
 # The guest ELF is embedded at build time by risc0-build, so there is no separate
