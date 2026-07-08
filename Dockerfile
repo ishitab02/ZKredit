@@ -16,7 +16,17 @@ ENV PATH=/opt/cargo/bin:/opt/rustup/bin:/root/.risc0/bin:$PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
 # RISC Zero toolchain (external source, risczero.com) — pinned to the version
 # contracts/shared/src/risc0.rs's VK/control root were generated against.
-RUN curl -L https://risczero.com/install | bash \
+# rzup resolves each component's release tag via api.github.com. Fly's remote
+# Depot builder shares an egress IP across tenants, so the anonymous 60/hr limit
+# is often already exhausted → the install 403s. An optional `github_token` build
+# secret raises that to 5000/hr (any authenticated token works; the repos are
+# public so no scopes are needed). Absent (e.g. local `--local-only` builds from
+# a non-rate-limited IP), it falls back to anonymous — same as before. The token
+# is mounted only for this layer and never lands in the image.
+#   Remote build:  fly deploy --build-secret github_token=<PAT>
+RUN --mount=type=secret,id=github_token,required=false \
+    curl -L https://risczero.com/install | bash \
+    && if [ -s /run/secrets/github_token ]; then export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; fi \
     && rzup install rust 1.94.1 \
     && rzup install cargo-risczero 3.0.5 \
     && rzup install r0vm 3.0.5
