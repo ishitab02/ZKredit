@@ -9,6 +9,7 @@ import type { IdentityProof } from '../lib/zk/identity-proof'
 import { connectFreighter } from '../lib/freighter'
 import { createKycSession, getKycStatus } from '../lib/kyc'
 import type { KycStatus } from '../lib/kyc'
+import { recordMembership } from '../lib/identity'
 import { KycBadge, RiskBadge } from '../components/Badges'
 import type { AttestationData } from '../lib/contracts/types'
 
@@ -160,6 +161,14 @@ function LinkWallet({
       setTxHash(
         await registerWallet(address, identity.commitmentHex, identity.proofBytes),
       )
+      // Tell the backend this wallet joined the group so it can re-score the
+      // group's combined history (Phase 4.3). Best-effort: the on-chain link
+      // already succeeded, so a failure here shouldn't surface as a link error.
+      try {
+        await recordMembership(address, identity.commitmentHex)
+      } catch {
+        /* non-fatal: backend group re-score is a follow-on, not the link itself */
+      }
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e))
     } finally {
