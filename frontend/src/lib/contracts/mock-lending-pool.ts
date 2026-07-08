@@ -3,21 +3,26 @@ import { invokeContractCall, simulateContractCall } from './rpc'
 import { NETWORK } from './config'
 import type { LoanOffer } from './types'
 
-const DEFAULT_TERMS: LoanOffer = {
-  maxPrincipal: 1000n,
-  collateralRatioBasisPoints: 15000,
-  aprBasisPoints: 1500,
+/**
+ * Whether a MockLendingPool contract is configured for this network. On the
+ * minimal mainnet deploy the pool is skipped (it's a demo mock), so callers
+ * must hide the lending UI rather than show fabricated terms (Global Rule #2).
+ */
+export function isLendingDeployed(): boolean {
+  return Boolean(NETWORK.contractIds.mockLendingPool)
 }
 
 /**
  * Fetch risk-adjusted loan terms for a wallet from MockLendingPool.
- * Falls back to default terms if the contract is not deployed or the
- * wallet has no attestation.
  *
- * Note: MockLendingPool will only return non-default terms once it is
- * wired to cross-call RiskAttestation (Day 3 task).
+ * Returns ``null`` when the pool isn't deployed on this network or the call
+ * fails — never fabricated defaults, so the UI can honestly show "not deployed"
+ * instead of passing off placeholder terms as real. The contract itself returns
+ * thin-file terms for un-attested wallets (post anti-hopping change), so a live
+ * pool always yields real terms.
  */
-export async function getLoanTerms(wallet: string): Promise<LoanOffer> {
+export async function getLoanTerms(wallet: string): Promise<LoanOffer | null> {
+  if (!isLendingDeployed()) return null
   try {
     const result = await simulateContractCall(
       NETWORK.contractIds.mockLendingPool,
@@ -25,7 +30,7 @@ export async function getLoanTerms(wallet: string): Promise<LoanOffer> {
       [new Address(wallet).toScVal()],
     )
 
-    if (result === null || result === undefined) return DEFAULT_TERMS
+    if (result === null || result === undefined) return null
 
     const m = result as Record<string, unknown>
     return {
@@ -34,7 +39,7 @@ export async function getLoanTerms(wallet: string): Promise<LoanOffer> {
       aprBasisPoints: Number(m.apr_basis_points),
     }
   } catch {
-    return DEFAULT_TERMS
+    return null
   }
 }
 
