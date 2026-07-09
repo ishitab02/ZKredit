@@ -79,7 +79,6 @@ export default function TryAttestation({
       .catch(() => {
         // Freighter is optional. Keep manual entry available.
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Connecting via the nav button fills this field even if it happens after mount.

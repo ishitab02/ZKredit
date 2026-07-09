@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { executeLoan, getLoanTerms, isLendingDeployed } from '../lib/contracts/mock-lending-pool'
+import { executeLoan, getLoanTerms } from '../lib/contracts/mock-lending-pool'
 import { getAttestation } from '../lib/contracts/risk-attestation'
 import { connectFreighter } from '../lib/freighter'
 import { KycBadge } from '../components/Badges'
@@ -76,24 +76,6 @@ export function Lending() {
     connectedAddress !== null &&
     lookedUpAddress === connectedAddress &&
     terms !== null
-
-  // The lending pool is a demo mock and is skipped on the minimal mainnet
-  // deploy. Show an honest notice rather than fabricated terms (Global Rule #2).
-  if (!isLendingDeployed()) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-3xl font-semibold tracking-tight">Lending demo</h1>
-        <div className="rounded-xl border border-gray-200 p-6 dark:border-gray-700">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            The MockLendingPool contract isn’t deployed on this network — it’s a
-            demo mock, omitted from the minimal mainnet deployment to keep on-chain
-            costs down. Wallet attestation and multi-wallet identity work as usual;
-            the loan-terms showcase is available on testnet.
-          </p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-6">

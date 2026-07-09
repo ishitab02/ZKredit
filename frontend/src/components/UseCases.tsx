@@ -3,7 +3,7 @@ import { motion, useReducedMotion, useScroll, useTransform, type MotionValue } f
 import Placeholder from "./Placeholder";
 import { fadeUp, inView, stagger } from "../lib/motion";
 
-type CaseData = {
+interface CaseData {
   tag: string;
   title: string;
   body: string;
@@ -11,7 +11,7 @@ type CaseData = {
   from: { x: number; y: number };
   range: [number, number];
   rest: string;
-};
+}
 
 const CASES: CaseData[] = [
   {

@@ -458,3 +458,182 @@
     animation: none;
   }
 }
+
+/* ── Attestation page: premium metal-credential surface ───────────────────
+   A calm, private-bank treatment distinct from the landing's cinematic look.
+   Champagne/gold is the luxe accent; teal + lavender stay from the site palette. */
+:root {
+  --champagne: #e9ce9e;
+  --champagne-hi: #f6e7c4;
+  --champagne-deep: #c6a667;
+}
+
+/* Gradient hairline frame + brushed-metal card body. */
+.metal-frame {
+  position: relative;
+  border-radius: 24px;
+  padding: 1.4px;
+  background: linear-gradient(
+    135deg,
+    rgba(246, 231, 196, 0.7) 0%,
+    rgba(127, 235, 217, 0.28) 38%,
+    rgba(6, 20, 15, 0.4) 60%,
+    rgba(250, 209, 255, 0.4) 100%
+  );
+  box-shadow:
+    0 40px 90px -46px rgba(0, 0, 0, 0.9),
+    0 0 60px -30px rgba(233, 206, 158, 0.25);
+}
+.metal-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 23px;
+  background: linear-gradient(135deg, #0c231b 0%, #071711 44%, #0a1e17 72%, #061510 100%);
+}
+.metal-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: repeating-linear-gradient(118deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 3px);
+}
+.metal-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 23px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -40px 80px -50px rgba(0, 0, 0, 0.8);
+}
+/* Cursor-tracked specular sweep. */
+.metal-spec {
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  width: 42%;
+  left: -30%;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(246, 231, 196, 0.14),
+    rgba(127, 235, 217, 0.1),
+    transparent
+  );
+  filter: blur(6px);
+  transform: skewX(-14deg);
+  mix-blend-mode: screen;
+}
+/* Embossed figures. */
+.metal-emboss {
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 2px 1px rgba(0, 0, 0, 0.55),
+    0 -1px 1px rgba(255, 255, 255, 0.12);
+}
+/* EMV-style chip. */
+.metal-chip {
+  position: relative;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f6e7c4, #d9bb84 55%, #b7965a);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.metal-chip::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 3px;
+  background:
+    linear-gradient(90deg, transparent 46%, rgba(120, 90, 40, 0.5) 46% 54%, transparent 54%),
+    linear-gradient(
+      0deg,
+      transparent 30%,
+      rgba(120, 90, 40, 0.5) 30% 36%,
+      transparent 36% 64%,
+      rgba(120, 90, 40, 0.5) 64% 70%,
+      transparent 70%
+    );
+}
+
+/* Reveal-sequence stepper fill. */
+.attest-track {
+  position: absolute;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.attest-track > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--champagne-deep), var(--champagne-hi));
+  box-shadow: 0 0 12px rgba(233, 206, 158, 0.5);
+  transition: width 1s cubic-bezier(0.5, 0.1, 0.2, 1);
+}
+
+/* Calm rise-in for the credential and its receipts. */
+.reveal-rise {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 1s ease,
+    transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-rise.is-in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal-rise {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .metal-spec {
+    display: none;
+  }
+  .attest-track > i {
+    transition: none;
+  }
+}
+
+/* Top-right network pill: glow up and dim continuously. */
+@keyframes testnet-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(127, 235, 217, 0);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 18px -2px rgba(127, 235, 217, 0.45);
+    border-color: rgba(127, 235, 217, 0.35);
+  }
+}
+.testnet-pulse {
+  animation: testnet-glow 2.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .testnet-pulse {
+    animation: none;
+  }
+}
+
+/* Attestation page uses the design-guide (Claude artifact) font: the artifact
+   sandbox can't load Clash Display / Satoshi, so it renders in the neutral
+   system sans — we match that here. Landing, nav, and footer keep Clash Display.
+   These rules are intentionally un-layered so they win over Tailwind's
+   `.font-display` / `.font-sans` utilities within this scope. */
+.attest-artifact-font,
+.attest-artifact-font .font-display,
+.attest-artifact-font .font-sans,
+.attest-artifact-font .btn-primary,
+.attest-artifact-font .btn-ghost {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}

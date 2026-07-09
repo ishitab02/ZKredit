@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   getGroupAttestation,
   registerWallet,
@@ -7,9 +7,6 @@ import {
 import { proveIdentity } from '../lib/zk/identity-proof'
 import type { IdentityProof } from '../lib/zk/identity-proof'
 import { connectFreighter } from '../lib/freighter'
-import { createKycSession, getKycStatus } from '../lib/kyc'
-import type { KycStatus } from '../lib/kyc'
-import { recordMembership } from '../lib/identity'
 import { KycBadge, RiskBadge } from '../components/Badges'
 import type { AttestationData } from '../lib/contracts/types'
 
@@ -131,7 +128,12 @@ export function Identity() {
       </Step>
 
       <Step n={4} title="KYC verification">
-        <VerifyIdentity commitment={identity?.commitmentHex ?? null} />
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          KYC is certified by an attestor after an off-chain identity check, then bound to your
+          identity commitment. Once verified, every wallet in your group inherits the{' '}
+          <span className="font-medium text-purple-600 dark:text-purple-400">KYC verified</span>{' '}
+          status and the lending APR discount.
+        </p>
       </Step>
     </div>
   )
@@ -161,14 +163,6 @@ function LinkWallet({
       setTxHash(
         await registerWallet(address, identity.commitmentHex, identity.proofBytes),
       )
-      // Tell the backend this wallet joined the group so it can re-score the
-      // group's combined history (Phase 4.3). Best-effort: the on-chain link
-      // already succeeded, so a failure here shouldn't surface as a link error.
-      try {
-        await recordMembership(address, identity.commitmentHex)
-      } catch {
-        /* non-fatal: backend group re-score is a follow-on, not the link itself */
-      }
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e))
     } finally {
@@ -310,125 +304,6 @@ function GroupScoreLookup({ initialCommitment }: { initialCommitment: string }) 
             confidence {(attestation.confidence / 100).toFixed(1)}%
           </span>
           {attestation.kycVerified && <KycBadge />}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const KYC_POLL_INTERVAL_MS = 4000
-
-function VerifyIdentity({ commitment }: { commitment: string | null }) {
-  const [status, setStatus] = useState<KycStatus | null>(null)
-  const [starting, setStarting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const stopPolling = () => {
-    if (pollRef.current !== null) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-  }
-
-  // Stop polling once the verification reaches a terminal state.
-  useEffect(() => {
-    if (status && status.status !== 'pending' && status.status !== 'in_review') {
-      stopPolling()
-    }
-  }, [status])
-
-  // Clean up the poll interval on unmount.
-  useEffect(() => stopPolling, [])
-
-  const checkStatus = async (target: string) => {
-    try {
-      setStatus(await getKycStatus(target))
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e))
-      stopPolling()
-    }
-  }
-
-  const start = async () => {
-    if (!commitment) return
-    setError(null)
-    setStarting(true)
-    try {
-      const session = await createKycSession(commitment)
-      window.open(session.url, '_blank', 'noopener,noreferrer')
-      await checkStatus(commitment)
-      stopPolling()
-      pollRef.current = setInterval(() => checkStatus(commitment), KYC_POLL_INTERVAL_MS)
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e))
-    } finally {
-      setStarting(false)
-    }
-  }
-
-  if (!commitment) {
-    return (
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        Generate an identity above first — KYC binds to your identity commitment.
-      </p>
-    )
-  }
-
-  return (
-    <div>
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        Verify your identity with Didit (a hosted document + liveness check). On approval, the
-        attestor binds a one-way nullifier derived from your document to this identity commitment
-        on-chain — one verified human can bind at most one identity group, so re-verifying with the
-        same document elsewhere is rejected. We never store your document data, only the resulting
-        opaque nullifier. Once bound, every wallet in your group inherits{' '}
-        <span className="font-medium text-purple-600 dark:text-purple-400">KYC verified</span>{' '}
-        status and real lending capacity.
-      </p>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          onClick={start}
-          disabled={starting || status?.kyc_verified === true}
-          className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-        >
-          {status?.kyc_verified
-            ? 'KYC verified'
-            : starting
-              ? 'Starting…'
-              : status?.status === 'pending' || status?.status === 'in_review'
-                ? 'Verifying…'
-                : 'Verify identity'}
-        </button>
-        {(status?.status === 'pending' || status?.status === 'in_review') && (
-          <span className="text-xs text-gray-500">
-            Waiting for the verification to complete — this page updates automatically.
-          </span>
-        )}
-      </div>
-
-      {error && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{error}</p>}
-
-      {status && status.status !== 'none' && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-          {status.kyc_verified ? (
-            <KycBadge />
-          ) : (
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-              {status.status.replace('_', ' ')}
-            </span>
-          )}
-          {status.bind_tx_hash && (
-            <a
-              href={`https://stellar.expert/explorer/public/tx/${status.bind_tx_hash}`}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-xs text-purple-600 underline dark:text-purple-400"
-            >
-              view bind tx ↗
-            </a>
-          )}
         </div>
       )}
     </div>
