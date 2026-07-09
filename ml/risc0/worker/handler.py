@@ -49,6 +49,15 @@ def _gpu_diagnostics() -> dict:
     probes = (
         ("nvidia_smi", ["nvidia-smi"]),
         ("binary_sass", ["cuobjdump", "--list-elf", _HOST_BIN]),
+        # Container-vs-VM limits: sppark's MSM does large pinned-host allocations
+        # (cudaHostAlloc). A low locked-memory ceiling (ulimit -l) or a tiny
+        # /dev/shm makes those allocs hand back memory a kernel then faults on ->
+        # the exact "illegal memory access" we see, on an otherwise-healthy GPU.
+        ("limits", ["bash", "-lc",
+                    "echo 'memlock(-l):'; ulimit -l; echo '--- ulimit -a ---'; "
+                    "ulimit -a; echo '--- /proc/meminfo lock ---'; "
+                    "grep -i lock /proc/meminfo; echo '--- /dev/shm ---'; "
+                    "df -h /dev/shm"]),
     )
     for name, cmd in probes:
         try:
@@ -95,6 +104,10 @@ def handler(event: dict) -> dict:
             # full Rust backtrace pointing at the crashing prove stage.
             env.setdefault("CUDA_LAUNCH_BLOCKING", "1")
             env.setdefault("RUST_BACKTRACE", "full")
+            # Trace risc0's prove stages so the last log line before the abort
+            # tells us STARK vs Groth16-wrap (only takes effect if the host
+            # binary initialised a tracing/env_logger subscriber).
+            env.setdefault("RUST_LOG", "info")
 
         try:
             proc = subprocess.run(
