@@ -9,6 +9,10 @@ const DEFAULT_TERMS: LoanOffer = {
   aprBasisPoints: 1500,
 }
 
+export function isLendingDeployed(): boolean {
+  return NETWORK.contractIds.mockLendingPool !== ''
+}
+
 /**
  * Fetch risk-adjusted loan terms for a wallet from MockLendingPool.
  * Falls back to default terms if the contract is not deployed or the
@@ -17,7 +21,11 @@ const DEFAULT_TERMS: LoanOffer = {
  * Note: MockLendingPool will only return non-default terms once it is
  * wired to cross-call RiskAttestation (Day 3 task).
  */
-export async function getLoanTerms(wallet: string): Promise<LoanOffer> {
+export async function getLoanTerms(wallet: string): Promise<LoanOffer | null> {
+  if (!isLendingDeployed()) {
+    return null
+  }
+
   try {
     const result = await simulateContractCall(
       NETWORK.contractIds.mockLendingPool,
