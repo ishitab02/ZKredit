@@ -51,14 +51,28 @@ RUN curl -L https://risczero.com/install | bash \
 # queries a live GPU via the CUDA runtime to detect its compute capability --
 # but a `docker build` step has no GPU device passed through (even on a
 # GPU-backed builder host), so autodetection fails with a hard compile error.
-# Its build.rs skips `-arch=native` if NVCC_APPEND_FLAGS is set, so pin the
-# target GPU's compute capability explicitly. sm_89 = Ada Lovelace (L4, RTX 4090).
-# Override ARG CUDA_ARCH at build time for a different GPU (A10=sm_86, A100=sm_80).
-ARG CUDA_ARCH=sm_89
-ENV NVCC_APPEND_FLAGS="-arch=${CUDA_ARCH}"
+# Its build.rs skips `-arch=native` if NVCC_APPEND_FLAGS is set.
+#
+# Pinning a SINGLE arch here is fragile: this RunPod endpoint's "Enabled GPU
+# types" pool has BOTH RTX 3090 (Ampere, sm_86) and L4 (Ada Lovelace, sm_89)
+# checked -- two different architectures, and which one a worker actually gets
+# varies per instance. A SASS binary built for the wrong compute capability
+# doesn't fail cleanly -- it runs and crashes at prove time with a CUDA "illegal
+# memory access" deep in sppark's kernels (confirmed: this exact crash happened
+# when the image was pinned to sm_89 alone, almost certainly a 3090-scheduled run).
+#
+# Fix: compile a fat binary covering every architecture this project might see
+# (A100=sm_80, RTX 3090/A10/A30=sm_86, L4/RTX4090/RTX6000-Ada=sm_89), plus embed
+# compute_89 PTX so the driver can JIT for any newer/other GPU not listed
+# explicitly (e.g. if a Blackwell type is enabled later in the pool).
+ENV NVCC_APPEND_FLAGS="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_89,code=compute_89"
 WORKDIR /build
 COPY ml/risc0 ./ml/risc0
-ENV RUSTFLAGS="-C target-cpu=native"
+# NOT target-cpu=native: that pins Rust codegen to the BUILD machine's exact CPU
+# (AVX-512 etc.), which is the same class of bug as the CUDA arch issue above if
+# RunPod's build infra runs on different silicon than the serving worker -- and
+# there's no CPU-bound hot path here to justify the risk (the actual proving
+# work is on the GPU via CUDA/sppark, not Rust-level SIMD). Default codegen only.
 RUN cd ml/risc0/host \
     && cargo build --release -F cuda \
     && cp target/release/zkredit-risc0-host /usr/local/bin/zkredit-risc0-host \
