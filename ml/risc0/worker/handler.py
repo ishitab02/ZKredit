@@ -18,6 +18,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import resource
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -43,6 +45,22 @@ _OUTPUTS = (
 _GPU_DIAG = os.environ.get("ZKREDIT_GPU_DIAG", "1") == "1"
 
 
+def _raise_memlock() -> str:
+    """Raise RLIMIT_MEMLOCK to its hard ceiling; report what was possible.
+
+    The serverless container starts at an 8MB soft memlock cap (a full VM is
+    typically unlimited). If the hard limit allows more, raising it here is
+    inherited by the prover subprocess and rules memlock in/out as the crash
+    cause. If hard == 8MB too, the cap is unfixable inside serverless.
+    """
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_MEMLOCK)
+        resource.setrlimit(resource.RLIMIT_MEMLOCK, (hard, hard))
+        return f"memlock raised: soft {soft} -> {hard} (hard)"
+    except Exception as err:  # noqa: BLE001 - diagnostics must never raise
+        return f"memlock raise failed: {err}"
+
+
 def _gpu_diagnostics() -> dict:
     """Collect worker GPU/driver + binary-SASS facts to diagnose the crash."""
     diag: dict[str, str] = {}
@@ -54,7 +72,8 @@ def _gpu_diagnostics() -> dict:
         # /dev/shm makes those allocs hand back memory a kernel then faults on ->
         # the exact "illegal memory access" we see, on an otherwise-healthy GPU.
         ("limits", ["bash", "-lc",
-                    "echo 'memlock(-l):'; ulimit -l; echo '--- ulimit -a ---'; "
+                    "echo 'memlock soft:'; ulimit -Sl; echo 'memlock hard:'; "
+                    "ulimit -Hl; echo '--- ulimit -a ---'; "
                     "ulimit -a; echo '--- /proc/meminfo lock ---'; "
                     "grep -i lock /proc/meminfo; echo '--- /dev/shm ---'; "
                     "df -h /dev/shm"]),
@@ -109,9 +128,20 @@ def handler(event: dict) -> dict:
             # binary initialised a tracing/env_logger subscriber).
             env.setdefault("RUST_LOG", "info")
 
+        memlock_note = _raise_memlock() if _GPU_DIAG else ""
+
+        # Under compute-sanitizer (memcheck), the CUDA runtime reports the exact
+        # faulting kernel + address instead of a generic stream-sync error.
+        # 10-50x slower, but a ~15s prove stays well inside the 900s ceiling.
+        cmd = [_HOST_BIN]
+        sanitizer = shutil.which("compute-sanitizer")
+        if _GPU_DIAG and sanitizer:
+            cmd = [sanitizer, "--tool", "memcheck",
+                   "--launch-timeout", "120", _HOST_BIN]
+
         try:
             proc = subprocess.run(
-                [_HOST_BIN], env=env, capture_output=True, timeout=_TIMEOUT_S
+                cmd, env=env, capture_output=True, timeout=_TIMEOUT_S
             )
         except subprocess.TimeoutExpired:
             return {"error": f"prove timed out after {_TIMEOUT_S}s"}
@@ -121,6 +151,11 @@ def handler(event: dict) -> dict:
                 "stderr": proc.stderr.decode(errors="replace")[-6000:],
             }
             if _GPU_DIAG:
+                # compute-sanitizer's memcheck report (exact faulting kernel +
+                # address) goes to stdout, not stderr.
+                err["stdout"] = proc.stdout.decode(errors="replace")[-8000:]
+                err["memlock"] = memlock_note
+                err["sanitizer"] = sanitizer or "<not found in image>"
                 err["diagnostics"] = _gpu_diagnostics()
             return err
 
