@@ -4,7 +4,7 @@ import { motion, useMotionValueEvent, useReducedMotion, useScroll } from "framer
 import { Pulse, ShieldCheck, Cube, Nodes, Lock } from "./Icons";
 import { fadeDown, fadeUp, inView, stagger } from "../lib/motion";
 
-const cx = (...c: Array<string | false | null | undefined>) =>
+const cx = (...c: (string | false | null | undefined)[]) =>
   c.filter(Boolean).join(" ");
 
 /** Local stroke icon matching ./Icons for the Lend row. */
@@ -29,11 +29,11 @@ function Coins(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-type Capability = {
+interface Capability {
   word: string;
   blurb: string;
   Icon: ComponentType<SVGProps<SVGSVGElement>>;
-};
+}
 
 const CAPABILITIES: Capability[] = [
   {

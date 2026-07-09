@@ -5,57 +5,74 @@
 // when the prover toolchain is available and honestly falls back to the fixture
 // otherwise (labeled via `submission_mode`).
 //
-// Proving is async (Phase 2.3): real proving offloads to a GPU node and takes
-// ~25s (longer if the node is waking from scale-to-zero), too long to block one
-// HTTP request. So `/prepare` returns a queued job and we poll
-// `GET /attest/jobs/{job_id}` until it is terminal.
-//
 // The attestor holds the server-side signing key, so it — not the browser —
-// signs the attestor authorization entry; the job result carries the partial XDR
-// the wallet then finishes signing with Freighter (`submitCosignedAttestation`).
+// signs the attestor authorization entry; this returns the partial XDR the
+// wallet then finishes signing with Freighter (`submitCosignedAttestation`).
+
+import type { TopFeature, ReasonCode } from './api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
-export interface PreparedAttestation {
-  /** Base-64 tx envelope with the attestor auth entry signed; wallet signs the envelope. */
-  partial_xdr: string
-  /** Proven journal fields (for display before the tx lands). */
+export class AttestationPrepareError extends Error {
+  declare kind:
+    | 'api_unreachable'
+    | 'session_failed'
+    | 'prepare_unavailable'
+    | 'job_status_unavailable'
+    | 'job_failed'
+    | 'rate_limited'
+    | 'already_attested'
+    | 'request_failed'
+}
+
+interface PrepareResponseBase {
   risk_bucket: number
   confidence: number
   distilled_model_hash: string
-  /** "live_cosign" (real per-wallet receipt) or "demo_fixture_cosign" (honest fallback). */
   submission_mode: string
   submission_detail: string
 }
 
-interface JobResponse {
-  job_id: string
-  status: 'queued' | 'proving' | 'succeeded' | 'failed'
-  stellar_address: string
-  submission_mode: string | null
-  error_detail: string | null
-  result: PreparedAttestation | null
+export interface PreparedAttestation extends PrepareResponseBase {
+  /** Base-64 tx envelope with the attestor auth entry signed; wallet signs the envelope. */
+  partial_xdr: string
+  // The prepare response extends the full AttestationResponse server-side, so
+  // these richer off-chain fields ride along with every prepared attestation.
+  // Optional because the queued-job payload may only echo the base fields.
+  credit_score?: number
+  risk_bucket_name?: string
+  full_model_hash?: string
+  proof_hash?: string
+  proof_generated?: boolean
+  zk_verified?: boolean
+  top_features?: TopFeature[]
+  reason_codes?: ReasonCode[]
 }
 
-/** Progress phases surfaced to the UI while a proving job runs. */
-export type AttestPhase = 'queued' | 'proving'
+export interface QueuedAttestation extends PrepareResponseBase {
+  job_id: string
+  status: string
+}
 
-const POLL_INTERVAL_MS = 2000
-const POLL_TIMEOUT_MS = 180_000 // generous: covers a cold GPU-node wake + prove
+export type PrepareAttestationResult = PreparedAttestation | QueuedAttestation
+export type PollJobResult = PreparedAttestation | QueuedAttestation
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+function makePrepareError(
+  kind: AttestationPrepareError['kind'],
+  message: string,
+): AttestationPrepareError {
+  const err = new Error(message) as AttestationPrepareError
+  err.kind = kind
+  return err
+}
 
 /**
  * Ask the API to score + co-sign an attestation for `wallet`, returning the
  * partial XDR the wallet must finish signing. Establishes the session cookie
- * (from a Freighter connect) that gates the paid endpoint, enqueues a proving
- * job, then polls it to completion. `onPhase` reports queued/proving so the UI
- * can show honest progress. Throws on failure.
+ * (from a Freighter connect) that gates the paid endpoint first. Throws on
+ * failure.
  */
-export async function prepareAttestation(
-  wallet: string,
-  onPhase?: (phase: AttestPhase) => void,
-): Promise<PreparedAttestation> {
+export async function prepareAttestation(wallet: string): Promise<PrepareAttestationResult> {
   // 1. Establish the session cookie that gates /attest/* (rate-limited + bound
   //    to this wallet). `credentials: 'include'` so the cookie is stored/sent.
   try {
@@ -66,10 +83,13 @@ export async function prepareAttestation(
       body: JSON.stringify({ stellar_address: wallet }),
     })
   } catch {
-    throw new Error(`Could not reach the ZKredit API at ${API_URL}.`)
+    throw makePrepareError(
+      'api_unreachable',
+      `Could not reach the ZKredit API at ${API_URL}.`,
+    )
   }
 
-  // 2. Enqueue the proving job.
+  // 2. Score + co-sign via the unified endpoint.
   let res: Response
   try {
     res = await fetch(`${API_URL}/api/v1/attest/${wallet}/prepare`, {
@@ -78,37 +98,73 @@ export async function prepareAttestation(
       credentials: 'include',
     })
   } catch {
-    throw new Error(`Could not reach the ZKredit API at ${API_URL}.`)
+    throw makePrepareError(
+      'api_unreachable',
+      `Could not reach the ZKredit API at ${API_URL}.`,
+    )
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(body?.detail || `Attestation request failed (${res.status})`)
-  }
-  const job = (await res.json()) as JobResponse
-  onPhase?.(job.status === 'proving' ? 'proving' : 'queued')
+    const detail = body?.detail || `Attestation request failed (${res.status})`
 
-  // 3. Poll until the job is terminal.
-  const deadline = Date.now() + POLL_TIMEOUT_MS
-  while (Date.now() < deadline) {
-    await sleep(POLL_INTERVAL_MS)
-    let pollRes: Response
-    try {
-      pollRes = await fetch(`${API_URL}/api/v1/attest/jobs/${job.job_id}`, {
-        credentials: 'include',
-      })
-    } catch {
-      throw new Error(`Could not reach the ZKredit API at ${API_URL}.`)
+    if (res.status === 401 || res.status === 403) {
+      throw makePrepareError('session_failed', detail)
     }
-    if (!pollRes.ok) {
-      const body = (await pollRes.json().catch(() => null)) as { detail?: string } | null
-      throw new Error(body?.detail || `Proving status check failed (${pollRes.status})`)
+    if (res.status === 429) {
+      throw makePrepareError('rate_limited', detail)
     }
-    const status = (await pollRes.json()) as JobResponse
-    if (status.status === 'succeeded' && status.result) return status.result
-    if (status.status === 'failed') {
-      throw new Error(status.error_detail || 'Proving failed. Please try again.')
+    if (/alreadyattested|already attested/i.test(detail)) {
+      throw makePrepareError('already_attested', detail)
     }
-    onPhase?.(status.status === 'proving' ? 'proving' : 'queued')
+    if (
+      res.status === 503 ||
+      /co-sign preparation is unavailable|risc zero|prover|proof.*unavailable/i.test(detail)
+    ) {
+      throw makePrepareError('prepare_unavailable', detail)
+    }
+    throw makePrepareError('request_failed', detail)
   }
-  throw new Error('Proving timed out. The GPU node may be waking up — try again shortly.')
+  return res.json() as Promise<PrepareAttestationResult>
+}
+
+export function isQueuedAttestation(result: PrepareAttestationResult): result is QueuedAttestation {
+  return "job_id" in result
+}
+
+export async function getAttestationJob(jobId: string): Promise<PollJobResult> {
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}/api/v1/attest/jobs/${jobId}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+    })
+  } catch {
+    throw makePrepareError(
+      'api_unreachable',
+      `Could not reach the ZKredit API at ${API_URL}.`,
+    )
+  }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null
+    const detail = body?.detail || `Attestation job request failed (${res.status})`
+
+    if (res.status === 404 || res.status === 405 || res.status === 501) {
+      throw makePrepareError('job_status_unavailable', detail)
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw makePrepareError('session_failed', detail)
+    }
+    if (res.status === 429) {
+      throw makePrepareError('rate_limited', detail)
+    }
+    throw makePrepareError('request_failed', detail)
+  }
+
+  const payload = (await res.json()) as PollJobResult & { error?: string }
+  if ('error' in payload && payload.error) {
+    throw makePrepareError('job_failed', payload.error)
+  }
+  return payload
 }

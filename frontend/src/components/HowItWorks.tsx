@@ -13,13 +13,13 @@ const PURPLE = "#ef8dff";
 const RING = "#f7b8ff";
 const RING_RGB = "247,184,255";
 
-type Step = {
+interface Step {
   n: string;
   title: string;
   blurb: string;
   cta: string;
   accent: string; // cool, non-green
-};
+}
 
 const STEPS: Step[] = [
   {

@@ -45,3 +45,5 @@ test_snapshots/
 /data/
 bq_population_180d.csv
 .vercel
+node_modules
+frontend/reference
