@@ -73,15 +73,67 @@ COPY ml/risc0 ./ml/risc0
 # RunPod's build infra runs on different silicon than the serving worker -- and
 # there's no CPU-bound hot path here to justify the risk (the actual proving
 # work is on the GPU via CUDA/sppark, not Rust-level SIMD). Default codegen only.
+# `--locked` is load-bearing, not hygiene. `risc0-groth16-sys` and `risc0-sys`
+# compile the HEADER-ONLY C++ of sppark/blst straight into their CUDA kernels,
+# and `risc0-groth16-sys` requests `sppark = "0.1.12"` -- i.e. `^0.1.12`, which
+# lets cargo silently pick 0.1.15. Those releases change `affine_t::mem_t`'s
+# layout for 32-byte fields (BN254) plus mont_t/jacobian_t/ntt/gpu_t, so an
+# unlocked build compiles RISC Zero's MSM against C++ headers it was never
+# tested on -> "illegal memory access" in sppark at Groth16 wrap time. Cargo.lock
+# pins sppark 0.1.12 / blst 0.3.15 to match risc0 v3.0.5's own lock; --locked
+# makes a drifting lock fail the build instead of shipping a broken kernel.
 RUN cd ml/risc0/host \
-    && cargo build --release -F cuda \
+    && cargo build --release -F cuda --locked \
     && cp target/release/zkredit-risc0-host /usr/local/bin/zkredit-risc0-host \
     && rm -rf /build/ml/risc0/host/target
+
+# --- Assert the vendored risc0-sys bounds fix actually compiled in ---
+# `[patch.crates-io]` fails *silently* in several ways (wrong workspace root, a
+# reused cargo layer, a stale `:latest` image on the worker). Each one costs a
+# full build+deploy+prove cycle to discover at runtime. cuobjdump needs no GPU,
+# so assert it here instead: the patched kernels take an extra `uint32_t count`,
+# which shows up in the mangled name as a trailing `j` (Itanium ABI: unsigned
+# int). Unpatched 1.5.0 mangles to ...P2Fp / ...P5FpExt. If this grep fails the
+# image is unshippable and the build stops, rather than hard-faulting on a GPU.
+RUN set -eu; \
+    syms="$(cuobjdump --dump-elf-symbols /usr/local/bin/zkredit-risc0-host \
+            | grep -o '_Z[0-9]*eltwise_zeroize[A-Za-z0-9_]*' | sort -u)"; \
+    echo "eltwise_zeroize symbols in binary:"; echo "$syms"; \
+    echo "$syms" | grep -q 'eltwise_zeroize_fpP2Fpj' \
+        || { echo "FATAL: eltwise_zeroize_fp is UNPATCHED (risc0-sys patch did not apply)"; exit 1; }; \
+    echo "$syms" | grep -q 'eltwise_zeroize_fpextP5FpExtj' \
+        || { echo "FATAL: eltwise_zeroize_fpext is UNPATCHED (risc0-sys patch did not apply)"; exit 1; }; \
+    echo "OK: vendored risc0-sys bounds fix is present in the built binary"
+
+# --- Assert the C++ header pins, and record them in the image ---
+# sppark/blst are header-only and get compiled INTO the CUDA kernels, so their
+# resolved versions are a property of the binary, not of any runtime env var.
+# Bake them where the handler can read them: a job result then reports exactly
+# which headers built the MSM, with no build-arg plumbing required.
+RUN set -eu; \
+    lock=/build/ml/risc0/host/Cargo.lock; \
+    ver() { grep -A1 "^name = \"$1\"\$" "$lock" | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1; }; \
+    sppark="$(ver sppark)"; blst="$(ver blst)"; zkvm="$(ver risc0-zkvm)"; \
+    [ "$sppark" = "0.1.12" ] || { echo "FATAL: sppark $sppark != 0.1.12 (risc0 v3.0.5 pin)"; exit 1; }; \
+    [ "$blst" = "0.3.15" ] || { echo "FATAL: blst $blst != 0.3.15 (risc0 v3.0.5 pin)"; exit 1; }; \
+    printf '{"sppark":"%s","blst":"%s","risc0_zkvm":"%s"}\n' "$sppark" "$blst" "$zkvm" \
+        > /etc/zkredit-build-info.json; \
+    echo "OK: header pins match risc0 v3.0.5 -> $(cat /etc/zkredit-build-info.json)"
 
 # --- Python serverless handler ---
 ENV ZKREDIT_HOST_BIN=/usr/local/bin/zkredit-risc0-host
 COPY ml/risc0/worker/requirements.txt /worker/requirements.txt
 RUN pip3 install --no-cache-dir -r /worker/requirements.txt
 COPY ml/risc0/worker/handler.py /worker/handler.py
+
+# --- Build identity (LAST: an ARG this late can't invalidate the cargo layer) ---
+# RunPod workers cache images per node, and re-pushing a mutable tag like
+# `:latest` does not reliably force a re-pull -- an endpoint can keep serving a
+# months-old digest. That turns "the fix didn't work" and "the fix never shipped"
+# into the same observation. Stamp the build here and have handler.py echo it in
+# every response, so the running image is always identifiable from a job result.
+# Pass it at build time:  docker build --build-arg BUILD_ID=$(git rev-parse --short HEAD) ...
+ARG BUILD_ID=dev
+ENV ZKREDIT_BUILD_ID=${BUILD_ID}
 
 CMD ["python3", "-u", "/worker/handler.py"]
