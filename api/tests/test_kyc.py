@@ -182,7 +182,8 @@ async def test_webhook_approved_records_and_blocks_second_identity(
     out = await kyc_routes.kyc_webhook(_FakeRequest(), session_factory)
     assert out["status"] == "approved"
     status = await kyc_routes.kyc_status(COMMITMENT_A, session_factory)
-    assert status.kyc_verified is True
+    assert status.kyc_verified is False
+    assert status.bind_tx_hash is None
 
     # Second, different commitment, SAME document → same nullifier → Sybil block.
     monkeypatch.setattr(
@@ -193,6 +194,30 @@ async def test_webhook_approved_records_and_blocks_second_identity(
     assert out2["status"] == "duplicate_nullifier"
     status_b = await kyc_routes.kyc_status(COMMITMENT_B, session_factory)
     assert status_b.kyc_verified is False
+
+
+@pytest.mark.asyncio
+async def test_kyc_status_turns_true_only_after_bind_tx(session_factory) -> None:
+    await store.record_verification(
+        session_factory,
+        commitment=COMMITMENT_A,
+        status="approved",
+        provider_session_id="sess-bound",
+        nullifier="dd" * 32,
+    )
+    pending_bind = await kyc_routes.kyc_status(COMMITMENT_A, session_factory)
+    assert pending_bind.kyc_verified is False
+    assert pending_bind.bind_tx_hash is None
+
+    await store.set_bind_tx(
+        session_factory,
+        commitment=COMMITMENT_A,
+        nullifier="dd" * 32,
+        tx_hash="tx-bound-123",
+    )
+    bound = await kyc_routes.kyc_status(COMMITMENT_A, session_factory)
+    assert bound.kyc_verified is True
+    assert bound.bind_tx_hash == "tx-bound-123"
 
 
 @pytest.mark.asyncio

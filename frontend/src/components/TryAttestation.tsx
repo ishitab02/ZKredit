@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   getAttestationRecord,
+  getModelInfo,
   getWalletFeatures,
   isValidStellarAddress,
   requestAttestation,
@@ -62,7 +63,7 @@ export default function TryAttestation({
   const [record, setRecord] = useState<AttestationRecordResponse | null>(null);
   const [features, setFeatures] = useState<FeatureSummaryResponse | null>(null);
   const [featuresUnavailable, setFeaturesUnavailable] = useState(false);
-  const [modelInfo] = useState<ModelInfoResponse | null>(null);
+  const [modelInfo, setModelInfo] = useState<ModelInfoResponse | null>(null);
 
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -98,6 +99,7 @@ export default function TryAttestation({
     setRecord(null);
     setFeatures(null);
     setFeaturesUnavailable(false);
+    setModelInfo(null);
 
     stepTimer.current = setInterval(() => {
       setStep((s) => Math.min(s + 1, STEPS.length - 1));
@@ -107,15 +109,19 @@ export default function TryAttestation({
       const result = await requestAttestation(addr);
       setAttestation(result);
 
-      const [recordRes, featuresRes] = await Promise.allSettled([
+      const [recordRes, featuresRes, modelInfoRes] = await Promise.allSettled([
         getAttestationRecord(addr),
         getWalletFeatures(addr),
+        getModelInfo(),
       ]);
       if (recordRes.status === "fulfilled") setRecord(recordRes.value);
       if (featuresRes.status === "fulfilled") {
         setFeatures(featuresRes.value);
       } else {
         setFeaturesUnavailable(true);
+      }
+      if (modelInfoRes.status === "fulfilled") {
+        setModelInfo(modelInfoRes.value);
       }
 
       setPhase("done");
