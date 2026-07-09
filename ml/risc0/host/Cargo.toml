@@ -19,3 +19,18 @@ serde_json = "1"
 # `default_prover()` proves on the worker's GPU (native Groth16). Off by default
 # so local/CI builds don't require the CUDA toolkit.
 cuda = ["risc0-zkvm/cuda"]
+
+# risc0-sys 1.5.0 (the newest 1.x on crates.io, pulled in by risc0-zkp 3.0.4's
+# cuda feature) ships CUDA kernels with a real out-of-bounds bug: the
+# eltwise_zeroize_{fp,fpext} kernels have no bounds guard, so threads in the
+# rounded-up final block read/write past the buffer. Upstream fixed it on main
+# (risc0/risc0#3341, commit 4d81f75) but never backported to any published 1.x,
+# and it hard-faults ("illegal memory access", surfacing as an sppark stream
+# error) on hosts whose CUDA allocator maps buffers near a region edge -- e.g.
+# RunPod's driver-580 workers -- while staying silently latent elsewhere.
+# vendor/risc0-sys is the pristine 1.5.0 crate + exactly that upstream diff.
+# Host-side proving machinery only: guest ELF, image_id and the Groth16 VK are
+# untouched, so on-chain verification is unaffected. Drop this patch when a
+# fixed risc0-sys 1.x (or a risc0 3.0.x with it) is published.
+[patch.crates-io]
+risc0-sys = { path = "../vendor/risc0-sys" }

@@ -36,13 +36,15 @@ _OUTPUTS = (
     ("image_id", "image_id.bin", 32),
 )
 
-# Temporary GPU crash diagnostics (ZKREDIT_GPU_DIAG=1). We hit a persistent
-# sppark "illegal memory access" that is NOT an arch mismatch (it reproduces on
-# an L4-only pool, the arch the binary is built for), so before guessing again
-# we capture the worker's real driver/CUDA version, the SASS actually baked into
-# the binary, and a serialized (CUDA_LAUNCH_BLOCKING) backtrace pinpointing the
-# failing kernel. Remove once the crash is understood.
+# Failure-time GPU diagnostics (default on: only runs when a prove fails, so
+# it costs nothing on the happy path). Captures the worker's driver/CUDA
+# version, the SASS baked into the binary, and container memory limits.
+# These probes found the eltwise_zeroize OOB bug (see vendor/risc0-sys).
 _GPU_DIAG = os.environ.get("ZKREDIT_GPU_DIAG", "1") == "1"
+# Opt-in deep tracing (ZKREDIT_SANITIZE=1): wraps the prover in
+# compute-sanitizer (names the exact faulting kernel + address) and serializes
+# kernel launches. 10-50x slower -- never enable for production proving.
+_SANITIZE = os.environ.get("ZKREDIT_SANITIZE", "0") == "1"
 
 
 def _raise_memlock() -> str:
@@ -117,27 +119,22 @@ def handler(event: dict) -> dict:
         # Prove on THIS worker's GPU, never route back out to a remote Bonsai.
         env.pop("BONSAI_API_URL", None)
         env.pop("BONSAI_API_KEY", None)
-        if _GPU_DIAG:
-            # Serialize kernel launches so a CUDA fault is reported at the
-            # actual failing launch (not a later stream sync), and surface a
-            # full Rust backtrace pointing at the crashing prove stage.
-            env.setdefault("CUDA_LAUNCH_BLOCKING", "1")
-            env.setdefault("RUST_BACKTRACE", "full")
-            # Trace risc0's prove stages so the last log line before the abort
-            # tells us STARK vs Groth16-wrap (only takes effect if the host
-            # binary initialised a tracing/env_logger subscriber).
-            env.setdefault("RUST_LOG", "info")
-
+        env.setdefault("RUST_BACKTRACE", "full")
         memlock_note = _raise_memlock() if _GPU_DIAG else ""
 
-        # Under compute-sanitizer (memcheck), the CUDA runtime reports the exact
-        # faulting kernel + address instead of a generic stream-sync error.
-        # 10-50x slower, but a ~15s prove stays well inside the 900s ceiling.
         cmd = [_HOST_BIN]
-        sanitizer = shutil.which("compute-sanitizer")
-        if _GPU_DIAG and sanitizer:
-            cmd = [sanitizer, "--tool", "memcheck",
-                   "--launch-timeout", "120", _HOST_BIN]
+        sanitizer = None
+        if _SANITIZE:
+            # Serialize kernel launches so a CUDA fault is reported at the
+            # actual failing launch (not a later stream sync).
+            env.setdefault("CUDA_LAUNCH_BLOCKING", "1")
+            env.setdefault("RUST_LOG", "info")
+            # compute-sanitizer memcheck reports the exact faulting kernel +
+            # address instead of a generic stream-sync error.
+            sanitizer = shutil.which("compute-sanitizer")
+            if sanitizer:
+                cmd = [sanitizer, "--tool", "memcheck",
+                       "--launch-timeout", "120", _HOST_BIN]
 
         try:
             proc = subprocess.run(
@@ -155,8 +152,9 @@ def handler(event: dict) -> dict:
                 # address) goes to stdout, not stderr.
                 err["stdout"] = proc.stdout.decode(errors="replace")[-8000:]
                 err["memlock"] = memlock_note
-                err["sanitizer"] = sanitizer or "<not found in image>"
                 err["diagnostics"] = _gpu_diagnostics()
+            if _SANITIZE:
+                err["sanitizer"] = sanitizer or "<not found in image>"
             return err
 
         result: dict[str, str] = {}
