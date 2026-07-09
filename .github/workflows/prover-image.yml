@@ -21,7 +21,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/zkredit-prover
 
 jobs:
   build:
@@ -55,9 +54,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Short SHA
-        id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      # GHCR namespaces must be lowercase, but `github.repository_owner` keeps the
+      # account's original casing (e.g. `PoulavBhowmick03`). Pushing that verbatim
+      # fails at the very end of a ~1h build. Downcase it here so the workflow
+      # works unchanged in a fork.
+      - name: Image ref
+        id: meta
+        run: |
+          echo "image=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/zkredit-prover" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       # Build context is the repo root: the Dockerfile copies ml/risc0 (which
       # includes vendor/risc0-sys, the patched kernels).
@@ -74,13 +79,18 @@ jobs:
           platforms: linux/amd64
           push: true
           build-args: |
-            BUILD_ID=${{ steps.sha.outputs.short }}
+            BUILD_ID=${{ steps.meta.outputs.short }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.short }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:sha-${{ steps.meta.outputs.short }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest
+          # Links the GHCR package to this repo, so package settings are reachable
+          # from the repo and visibility can be managed by its owner.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           provenance: false
 
       - name: Image to deploy
         run: |
           echo "Point the RunPod endpoint at this exact tag:"
-          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.short }}"
+          echo "  ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:sha-${{ steps.meta.outputs.short }}"
