@@ -1,16 +1,19 @@
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
-  ApiError,
   getAttestationRecord,
   getWalletFeatures,
   isValidStellarAddress,
-  requestAttestation,
   type AttestationRecordResponse,
   type AttestationResponse,
   type FeatureSummaryResponse,
   type ModelInfoResponse,
 } from "../lib/api";
+import {
+  AttestationPrepareError,
+  prepareAttestation,
+  type PreparedAttestation,
+} from "../lib/attestor";
 import { getConnectedAddress } from "../lib/freighter";
 
 const BUCKETS = ["VERY_LOW", "LOW", "MEDIUM", "HIGH", "VERY_HIGH"] as const;
@@ -90,6 +93,12 @@ export default function TryAttestation({
     if (stepTimer.current) clearInterval(stepTimer.current);
   }, []);
 
+  useEffect(() => {
+    void getModelInfo()
+      .then(setModelInfo)
+      .catch(() => setModelInfo(null));
+  }, []);
+
   async function runAttestation(addr: string) {
     setPhase("loading");
     setStep(0);
@@ -104,8 +113,11 @@ export default function TryAttestation({
     }, 900);
 
     try {
-      const result = await requestAttestation(addr);
-      setAttestation(result);
+      const result = await prepareAttestation(addr, (nextPhase) => {
+        if (nextPhase === "queued") setStep(3);
+        if (nextPhase === "proving") setStep(3);
+      });
+      setAttestation(toAttestationResponse(result));
 
       const [recordRes, featuresRes] = await Promise.allSettled([
         getAttestationRecord(addr),
@@ -121,9 +133,9 @@ export default function TryAttestation({
       setPhase("done");
     } catch (err) {
       const message =
-        err instanceof ApiError
-          ? err.status === 0
-            ? "Could not reach the attestation service. It may be offline — please retry in a moment."
+        err instanceof AttestationPrepareError
+          ? err.kind === "api_unreachable"
+            ? "Could not reach the attestation service. It may be offline - please retry in a moment."
             : err.message
           : "Something went wrong generating this attestation.";
       setErrorMessage(message);
@@ -184,6 +196,29 @@ export default function TryAttestation({
       </div>
     </div>
   );
+}
+
+function toAttestationResponse(result: PreparedAttestation): AttestationResponse {
+  return {
+    stellar_address: result.stellar_address ?? "",
+    risk_bucket: result.risk_bucket,
+    risk_bucket_name: result.risk_bucket_name ?? "UNKNOWN",
+    confidence: result.confidence,
+    credit_score: result.credit_score ?? 0,
+    full_model_hash: result.full_model_hash ?? "",
+    distilled_model_hash: result.distilled_model_hash,
+    zk_verified: result.zk_verified ?? false,
+    proof_generated: result.proof_generated ?? false,
+    proof_hash: result.proof_hash ?? "",
+    public_inputs: result.public_inputs ?? [],
+    anomaly: result.anomaly ?? false,
+    anomaly_score: result.anomaly_score ?? 0,
+    top_features: result.top_features ?? [],
+    reason_codes: result.reason_codes ?? [],
+    feature_schema_version: result.feature_schema_version ?? "v1",
+    tx_hash: null,
+    created_at: result.created_at ?? new Date().toISOString(),
+  };
 }
 
 function LoadingSteps({ step }: { step: number }) {

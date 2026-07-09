@@ -28,7 +28,6 @@ const mocks = vi.hoisted(() => {
     connectFreighter: vi.fn(),
     getConnectedAddress: vi.fn(),
     prepareAttestation: vi.fn(),
-    getAttestationJob: vi.fn(),
     FreighterError: MockFreighterError,
     AttestationPrepareError: MockAttestationPrepareError,
   };
@@ -43,9 +42,6 @@ vi.mock("../lib/freighter", () => ({
 vi.mock("../lib/attestor", () => ({
   AttestationPrepareError: mocks.AttestationPrepareError,
   prepareAttestation: mocks.prepareAttestation,
-  getAttestationJob: mocks.getAttestationJob,
-  isQueuedAttestation: (result: unknown) =>
-    typeof result === "object" && result !== null && "job_id" in result,
 }));
 
 function makeFreighterError(
@@ -101,14 +97,14 @@ describe("OnChainAttest", () => {
   });
 
   it("renders the queued proving state when prepare returns a job id", async () => {
-    mocks.prepareAttestation.mockResolvedValueOnce({
-      job_id: "job-123",
-      status: "queued",
-      risk_bucket: 2,
-      confidence: 0.9,
-      distilled_model_hash: "bb",
-      submission_mode: "live_cosign",
-      submission_detail: "waiting",
+    mocks.prepareAttestation.mockImplementationOnce(async (_wallet, onPhase) => {
+      onPhase?.("queued", {
+        jobId: "job-123",
+        status: "queued",
+        submissionMode: "live_cosign",
+        submissionDetail: "waiting",
+      });
+      return new Promise(() => undefined);
     });
 
     render(<OnChainAttest walletAddress={"G" + "A".repeat(55)} />);
