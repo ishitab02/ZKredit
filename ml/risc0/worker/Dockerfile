@@ -10,7 +10,15 @@
 #   docker build -f ml/risc0/worker/Dockerfile -t <user>/zkredit-prover:latest .
 #   docker push <user>/zkredit-prover:latest
 # Then point a RunPod serverless endpoint (NVIDIA L4/A10/etc.) at that image.
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+# EXACTLY the base RISC Zero's own production prover uses for this release:
+# the v3.0.5 tag's bento/dockerfiles/agent.dockerfile builds with
+# nvidia/cuda:12.8.0-devel-ubuntu24.04. The circuit kernels are enormous
+# machine-generated .cu files compiled at -Xptxas -O3, and upstream only ever
+# builds/validates them under nvcc 12.8 -- our previous 12.4.1 base produced
+# binaries that computed garbage on-GPU (combos_divide nonzero remainder under
+# serialized execution; "illegal memory access" under concurrent execution),
+# the classic miscompile signature. Match upstream's toolchain exactly.
+FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 # risc0 3.0.5's native (Docker-free) Groth16 wrap pulls `circom-witnesscalc`,
@@ -81,7 +89,10 @@ RUN cd ml/risc0/host \
 # --- Python serverless handler ---
 ENV ZKREDIT_HOST_BIN=/usr/local/bin/zkredit-risc0-host
 COPY ml/risc0/worker/requirements.txt /worker/requirements.txt
-RUN pip3 install --no-cache-dir -r /worker/requirements.txt
+# --break-system-packages: ubuntu 24.04 marks the system python as
+# externally-managed (PEP 668); this is a single-purpose container, so
+# installing into it is exactly what we want.
+RUN pip3 install --no-cache-dir --break-system-packages -r /worker/requirements.txt
 COPY ml/risc0/worker/handler.py /worker/handler.py
 
 CMD ["python3", "-u", "/worker/handler.py"]
