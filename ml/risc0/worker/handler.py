@@ -79,7 +79,7 @@ def _raise_memlock() -> str:
         soft, hard = resource.getrlimit(resource.RLIMIT_MEMLOCK)
         resource.setrlimit(resource.RLIMIT_MEMLOCK, (hard, hard))
         return f"memlock raised: soft {soft} -> {hard} (hard)"
-    except Exception as err:  # noqa: BLE001 - diagnostics must never raise
+    except Exception as err:
         return f"memlock raise failed: {err}"
 
 
@@ -111,7 +111,7 @@ def _gpu_diagnostics() -> dict:
         try:
             p = subprocess.run(cmd, capture_output=True, timeout=30)
             diag[name] = (p.stdout + b"\n" + p.stderr).decode(errors="replace")[-4000:]
-        except Exception as err:  # noqa: BLE001 - diagnostics must never raise
+        except Exception as err:
             diag[name] = f"<probe failed: {err}>"
     return diag
 

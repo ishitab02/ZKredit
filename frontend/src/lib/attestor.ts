@@ -36,6 +36,7 @@ interface PrepareResponseBase {
 export interface PreparedAttestation extends PrepareResponseBase {
   /** Base-64 tx envelope with the attestor auth entry signed; wallet signs the envelope. */
   partial_xdr: string
+  stellar_address?: string
   // The prepare response extends the full AttestationResponse server-side, so
   // these richer off-chain fields ride along with every prepared attestation.
   // Optional because the queued-job payload may only echo the base fields.
@@ -45,8 +46,13 @@ export interface PreparedAttestation extends PrepareResponseBase {
   proof_hash?: string
   proof_generated?: boolean
   zk_verified?: boolean
+  public_inputs?: string[]
+  anomaly?: boolean
+  anomaly_score?: number
   top_features?: TopFeature[]
   reason_codes?: ReasonCode[]
+  feature_schema_version?: string
+  created_at?: string
 }
 
 export interface QueuedAttestation extends PrepareResponseBase {
@@ -54,8 +60,19 @@ export interface QueuedAttestation extends PrepareResponseBase {
   status: string
 }
 
+export type AttestationPreparePhase = 'queued' | 'proving'
+export interface AttestationPreparePhaseMeta {
+  jobId: string
+  status: string
+  submissionMode: string
+  submissionDetail: string
+}
+
 export type PrepareAttestationResult = PreparedAttestation | QueuedAttestation
 export type PollJobResult = PreparedAttestation | QueuedAttestation
+
+const POLL_INTERVAL_MS = 2000
+const POLL_TIMEOUT_MS = 180000
 
 function makePrepareError(
   kind: AttestationPrepareError['kind'],
@@ -67,12 +84,10 @@ function makePrepareError(
 }
 
 /**
- * Ask the API to score + co-sign an attestation for `wallet`, returning the
- * partial XDR the wallet must finish signing. Establishes the session cookie
- * (from a Freighter connect) that gates the paid endpoint first. Throws on
- * failure.
+ * Ask the API to score + co-sign an attestation for `wallet`, polling any
+ * queued proving job until the final prepared attestation is ready.
  */
-export async function prepareAttestation(wallet: string): Promise<PrepareAttestationResult> {
+async function startPrepareAttestation(wallet: string): Promise<PrepareAttestationResult> {
   // 1. Establish the session cookie that gates /attest/* (rate-limited + bound
   //    to this wallet). `credentials: 'include'` so the cookie is stored/sent.
   try {
@@ -127,6 +142,39 @@ export async function prepareAttestation(wallet: string): Promise<PrepareAttesta
   return res.json() as Promise<PrepareAttestationResult>
 }
 
+export async function prepareAttestation(
+  wallet: string,
+  onPhase?: (
+    phase: AttestationPreparePhase,
+    meta: AttestationPreparePhaseMeta,
+  ) => void,
+): Promise<PreparedAttestation> {
+  const startedAt = Date.now()
+  let result = await startPrepareAttestation(wallet)
+
+  while (isQueuedAttestation(result)) {
+    const phase = result.status === 'proving' ? 'proving' : 'queued'
+    onPhase?.(phase, {
+      jobId: result.job_id,
+      status: result.status,
+      submissionMode: result.submission_mode,
+      submissionDetail: result.submission_detail,
+    })
+
+    if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
+      throw makePrepareError(
+        'job_failed',
+        `Attestation preparation timed out after ${Math.round(POLL_TIMEOUT_MS / 1000)}s.`,
+      )
+    }
+
+    await delay(POLL_INTERVAL_MS)
+    result = await getAttestationJob(result.job_id)
+  }
+
+  return result
+}
+
 export function isQueuedAttestation(result: PrepareAttestationResult): result is QueuedAttestation {
   return "job_id" in result
 }
@@ -167,4 +215,8 @@ export async function getAttestationJob(jobId: string): Promise<PollJobResult> {
     throw makePrepareError('job_failed', payload.error)
   }
   return payload
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
