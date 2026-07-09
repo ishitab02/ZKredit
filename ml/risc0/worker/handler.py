@@ -69,6 +69,13 @@ def _gpu_diagnostics() -> dict:
     probes = (
         ("nvidia_smi", ["nvidia-smi"]),
         ("binary_sass", ["cuobjdump", "--list-elf", _HOST_BIN]),
+        # Did the vendored risc0-sys bounds fix actually compile in? The fixed
+        # kernel gained a uint32_t param, so its mangled name ends "P2Fpj"
+        # (patched) instead of "P2Fp" (buggy upstream 1.5.0).
+        ("zeroize_symbols", ["bash", "-lc",
+                             f"cuobjdump --dump-elf-symbols '{_HOST_BIN}' "
+                             "| grep -io '_Z[0-9]*eltwise_zeroize[a-z0-9_]*' "
+                             "| sort -u"]),
         # Container-vs-VM limits: sppark's MSM does large pinned-host allocations
         # (cudaHostAlloc). A low locked-memory ceiling (ulimit -l) or a tiny
         # /dev/shm makes those allocs hand back memory a kernel then faults on ->
@@ -124,7 +131,7 @@ def handler(event: dict) -> dict:
 
         cmd = [_HOST_BIN]
         sanitizer = None
-        if _SANITIZE:
+        if _SANITIZE or bool(inp.get("sanitize")):
             # Serialize kernel launches so a CUDA fault is reported at the
             # actual failing launch (not a later stream sync).
             env.setdefault("CUDA_LAUNCH_BLOCKING", "1")
@@ -147,14 +154,25 @@ def handler(event: dict) -> dict:
                 "error": f"host binary failed (exit {proc.returncode})",
                 "stderr": proc.stderr.decode(errors="replace")[-6000:],
             }
+            stdout_full = proc.stdout.decode(errors="replace")
             if _GPU_DIAG:
                 # compute-sanitizer's memcheck report (exact faulting kernel +
                 # address) goes to stdout, not stderr.
-                err["stdout"] = proc.stdout.decode(errors="replace")[-8000:]
+                err["stdout"] = stdout_full[-8000:]
                 err["memlock"] = memlock_note
                 err["diagnostics"] = _gpu_diagnostics()
-            if _SANITIZE:
-                err["sanitizer"] = sanitizer or "<not found in image>"
+            if sanitizer:
+                err["sanitizer"] = sanitizer
+                # The full report can dwarf the returned tail (175 errors seen
+                # once), so summarize: every DISTINCT faulting kernel site,
+                # deduped, so one run exposes all buggy kernels at once.
+                sites = sorted({
+                    line.split(" at ", 1)[1].strip()
+                    for line in stdout_full.splitlines()
+                    if line.startswith("=========") and " at " in line
+                    and "+0x" in line
+                })
+                err["fault_sites"] = sites[:40]
             return err
 
         result: dict[str, str] = {}
