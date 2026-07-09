@@ -112,7 +112,10 @@ def _decode_output(output: dict):
     from ml.risc0.prover import Risc0Proof
 
     if "error" in output:
-        raise RuntimeError(f"RunPod worker error: {output['error']}")
+        # build_id identifies the worker image; without it a stale cached image
+        # is indistinguishable from a broken fix. Absent on pre-BUILD_ID images.
+        build = output.get("build_id", "unknown")
+        raise RuntimeError(f"RunPod worker error (image {build}): {output['error']}")
     try:
         seal = base64.b64decode(output["seal"])
         journal = base64.b64decode(output["journal"])

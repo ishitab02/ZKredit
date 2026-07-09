@@ -28,6 +28,26 @@ import runpod
 
 _HOST_BIN = os.environ.get("ZKREDIT_HOST_BIN", "/usr/local/bin/zkredit-risc0-host")
 _TIMEOUT_S = int(os.environ.get("ZKREDIT_PROVE_TIMEOUT_S", "900"))
+# Stamped by the Dockerfile (--build-arg BUILD_ID=<git sha>). Echoed on every
+# response so a stale cached image on a RunPod worker is visible from the job
+# result alone, instead of being mistaken for a failed code fix.
+_BUILD_ID = os.environ.get("ZKREDIT_BUILD_ID", "unknown")
+
+
+def _build_info() -> dict:
+    """Resolved sppark/blst versions, baked in at image build time.
+
+    These are header-only C++ libs compiled *into* the CUDA kernels, so their
+    versions are a property of the binary that no runtime probe can recover.
+    A wrong sppark here means the Groth16 MSM was built against headers RISC
+    Zero never tested (see the Dockerfile) -- the cause of the sppark
+    "illegal memory access" crash. Reported on every job.
+    """
+    try:
+        with open("/etc/zkredit-build-info.json") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"note": "pre-build-info image"}
 
 # Byte shapes the host writes (must match ml.risc0.prover._read_proof).
 _OUTPUTS = (
@@ -97,6 +117,14 @@ def _gpu_diagnostics() -> dict:
 
 
 def handler(event: dict) -> dict:
+    """Stamp every response with the image identity, then prove."""
+    result = _prove(event)
+    result["build_id"] = _BUILD_ID
+    result["build_info"] = _build_info()
+    return result
+
+
+def _prove(event: dict) -> dict:
     inp = event.get("input") or {}
     vector = inp.get("feature_vector")
     commitment_hex = inp.get("identity_commitment")
