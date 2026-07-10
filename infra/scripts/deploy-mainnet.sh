@@ -29,6 +29,16 @@ NETWORK="mainnet"
 NETWORK_RPC="${SOROBAN_RPC_URL:-https://mainnet.sorobanrpc.com}"
 NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
 
+# The committed .env sets SOROBAN_* but NOT the STELLAR_*-prefixed names that
+# stellar CLI v27 reads first. When an rpc-url is present without a matching
+# STELLAR_NETWORK_PASSPHRASE, the CLI fails with "rpc-url is used but network
+# passphrase is missing" — and --quiet swallows the message. Export all four
+# (dotenv won't override already-set vars) so the network is unambiguous.
+export STELLAR_RPC_URL="${NETWORK_RPC}"
+export STELLAR_NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
+export SOROBAN_RPC_URL="${NETWORK_RPC}"
+export SOROBAN_NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
+
 ADMIN_ALIAS="zkredit_admin_mainnet"
 ATTESTOR_ALIAS="zkredit_attestor_mainnet"
 
