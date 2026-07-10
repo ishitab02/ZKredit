@@ -90,7 +90,7 @@ export default function Footer({ route = "landing" }: { route?: SiteRoute }) {
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-teal-bright" />
               </span>
               <span className="font-mono text-xs uppercase tracking-[0.16em] text-fog-muted">
-                Stellar Testnet · Live
+                Stellar Mainnet · Live
               </span>
             </div>
 

@@ -68,7 +68,7 @@ describe("OnChainAttest", () => {
     mocks.getConnectedAddress.mockResolvedValue(null);
   });
 
-  it("shows a wrong-network message when Freighter is not on testnet", async () => {
+  it("shows a wrong-network message when Freighter is not on mainnet", async () => {
     mocks.connectFreighter.mockRejectedValueOnce(
       makeFreighterError("wrong_network", "wrong network"),
     );
@@ -78,7 +78,7 @@ describe("OnChainAttest", () => {
 
     await screen.findByText("Wrong Freighter network");
     expect(
-      screen.getByText(/switch the extension to testnet/i),
+      screen.getByText(/switch the extension to mainnet/i),
     ).toBeInTheDocument();
   });
 

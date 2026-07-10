@@ -82,7 +82,7 @@ export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-teal-bright" />
                 </span>
                 <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-fog-muted">
-                  Stellar Testnet
+                  Stellar Mainnet
                 </span>
               </span>
             )}

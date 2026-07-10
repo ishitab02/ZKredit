@@ -180,7 +180,7 @@ export default function OnChainAttest({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-bright opacity-70" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-teal-bright" />
               </span>
-              <span className="drop-shadow-[0_0_8px_rgba(127,235,217,0.85)]">Testnet</span>
+              <span className="drop-shadow-[0_0_8px_rgba(127,235,217,0.85)]">Mainnet</span>
             </span>
           </span>
         ) : (
@@ -196,7 +196,7 @@ export default function OnChainAttest({
 
       {wallet && (
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
-          {["Freighter detected", "Unlocked", "Network: Testnet"].map((h) => (
+          {["Freighter detected", "Unlocked", "Network: Mainnet"].map((h) => (
             <span key={h} className="inline-flex items-center gap-2 font-mono text-[0.82rem] text-fog-faint">
               <span className="text-teal-bright">✓</span> {h}
             </span>
@@ -358,7 +358,7 @@ function describeError(error: unknown): ErrorState {
         return {
           title: "Wrong Freighter network",
           detail:
-            "Freighter is not on Stellar Testnet. Switch the extension to Testnet, then retry the wallet action.",
+            "Freighter is not on Stellar Mainnet. Switch the extension to Mainnet, then retry the wallet action.",
         };
       case "sign_rejected":
         return {
@@ -378,9 +378,9 @@ function describeError(error: unknown): ErrorState {
     switch (error.kind) {
       case "source_account_unavailable":
         return {
-          title: "Wallet not ready for testnet submission",
+          title: "Wallet not ready for mainnet submission",
           detail:
-            "This Stellar testnet wallet is missing or underfunded for transaction fees. Fund it on testnet, then retry the attestation.",
+            "This Stellar mainnet wallet is missing or underfunded for transaction fees. Fund it on mainnet, then retry the attestation.",
         };
       case "submit_timeout":
         return {
