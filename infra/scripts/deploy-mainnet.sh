@@ -93,7 +93,10 @@ deploy_contract() {
     _name="$3"
     [ -f "${_wasm}" ] || die "missing ${_wasm} — run 'make build-contracts' first."
     log "deploying ${_name} ($(stat -c%s "${_wasm}") bytes)..."
-    _id="$("${CLI}" --quiet contract deploy \
+    # NOTE: no --quiet here. The contract id is written to stdout (captured into
+    # _id); the CLI's diagnostics AND errors go to stderr. --quiet suppresses the
+    # error text, which turned a failed mainnet submit into a silent script exit.
+    _id="$("${CLI}" contract deploy \
         --wasm "${_wasm}" \
         --source "${ADMIN_ALIAS}" \
         --network "${NETWORK}" \
@@ -108,7 +111,7 @@ invoke() {
     _name="$2"
     shift 2
     log "  ${_name}"
-    "${CLI}" --quiet contract invoke \
+    "${CLI}" contract invoke \
         --id "${_id}" \
         --source "${ADMIN_ALIAS}" \
         --network "${NETWORK}" \
