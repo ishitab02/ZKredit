@@ -92,7 +92,7 @@ export function Identity() {
 
   const generate = async () => {
     if (!address) {
-      setGenError('Connect your wallet first — the identity proof binds to it.')
+      setGenError('Connect your wallet first.')
       return
     }
     setGenerating(true)
@@ -113,7 +113,7 @@ export function Identity() {
     if (!identity) return
     const blob = new Blob(
       [
-        'ZKredit identity secret — keep this safe and private.\n',
+        'ZKredit identity secret. Keep this safe and private.\n',
         'Anyone with this value controls your identity group.\n\n',
         `secret (decimal): ${identity.secretDec}\n`,
         `commitment: ${identity.commitmentHex}\n`,
@@ -168,16 +168,18 @@ export function Identity() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <p className="eyebrow mb-4 justify-center text-center" style={{ color: '#7FEBD9' }}>
-        <span className="h-1.5 w-1.5 rounded-full bg-teal-bright" style={{ boxShadow: '0 0 9px #7FEBD9' }} />
-        My Identity
-      </p>
-      <h1 className="text-center font-display text-3xl font-semibold leading-[1.1] tracking-tight text-fog md:text-4xl">
-        Your identity, verified once
-      </h1>
-      <p className="mx-auto mt-3.5 max-w-md text-center text-[14.5px] leading-relaxed text-fog-muted">
-        Verify once — every wallet you link inherits it.
-      </p>
+      <div className="text-center">
+        <p className="eyebrow mb-4 justify-center" style={{ color: '#7FEBD9' }}>
+          <span className="h-1.5 w-1.5 rounded-full bg-teal-bright" style={{ boxShadow: '0 0 9px #7FEBD9' }} />
+          My Identity
+        </p>
+        <h1 className="font-display text-3xl font-semibold leading-[1.1] tracking-tight text-fog md:text-4xl">
+          Your identity, verified once
+        </h1>
+        <p className="mx-auto mt-3.5 max-w-md text-[14.5px] leading-relaxed text-fog-muted">
+          One verification covers every wallet you link.
+        </p>
+      </div>
 
       <RadialStatus doneCount={doneCount} activeStage={activeStage} complete={complete} />
 
@@ -193,8 +195,7 @@ export function Identity() {
         {stageState(0) === 'active' && (
           <ActiveCard step={1} icon={<Wallet className="h-5 w-5" />} title="Connect your wallet">
             <p className="mt-4 max-w-md text-sm leading-relaxed text-fog-muted">
-              Freighter signs your identity proof and every on-chain action after this — it never
-              shares your keys with ZKredit.
+              Freighter signs your proof without sharing your keys.
             </p>
             <button onClick={connect} className="btn-primary mt-6 w-full justify-center !py-3.5 text-xs">
               Connect Freighter
@@ -215,8 +216,8 @@ export function Identity() {
               <div className="mt-3 space-y-3">
                 <FieldRow label="Identity commitment" value={identity.commitmentHex} />
                 <div className="rounded-xl border border-[rgba(233,206,158,0.2)] bg-[rgba(233,206,158,0.05)] p-3.5 text-xs leading-relaxed text-fog-muted">
-                  Anyone with this secret controls your identity group. It only ever exists in this
-                  browser — back it up now, ZKredit cannot recover it.
+                  Anyone with this secret controls your identity group. Back it up now; ZKredit cannot
+                  recover it.
                   <div className="mt-2.5 flex items-center gap-2">
                     <span className="break-all font-mono text-[11px]">{identity.secretDec}</span>
                     <CopyButton value={identity.secretDec} label="Copy secret" />
@@ -232,8 +233,7 @@ export function Identity() {
         {stageState(1) === 'active' && (
           <ActiveCard step={2} icon={<Fingerprint className="h-5 w-5" />} title="Create your identity">
             <p className="mt-4 max-w-md text-sm leading-relaxed text-fog-muted">
-              Generates a secret in your browser and a zero-knowledge proof that you know it. The
-              proof — never the secret — is what the contract checks when you link a wallet.
+              Creates a private secret and a proof of it, right in your browser.
             </p>
             <button
               onClick={generate}
@@ -279,8 +279,7 @@ export function Identity() {
         {stageState(2) === 'active' && (
           <ActiveCard step={3} icon={<Chain className="h-5 w-5" />} title="Link your wallet">
             <p className="mt-4 max-w-md text-sm leading-relaxed text-fog-muted">
-              Registers this wallet to your identity commitment on-chain. Freighter signs the
-              transaction; the contract verifies your proof before linking.
+              Registers this wallet to your identity, on-chain.
             </p>
             <button
               onClick={link}
@@ -290,7 +289,7 @@ export function Identity() {
               {linkBusy === 'link' ? 'Linking…' : 'Link wallet'}
             </button>
             {membershipWarning && (
-              <p className="mt-3 text-xs leading-relaxed text-[#E9CE9E]">
+              <p className="mt-3 w-full text-left text-xs leading-relaxed text-[#E9CE9E]">
                 Wallet linked on-chain, but backend membership recording failed: {membershipWarning}
               </p>
             )}
@@ -342,18 +341,16 @@ function RadialStatus({
   const fraction = doneCount / STAGE_LABELS.length
   const offset = c * (1 - fraction)
 
-  const statusLine = complete
-    ? 'Your identity is fully verified'
-    : `Almost there — ${STAGE_LABELS[activeStage]!.toLowerCase()} to continue`
+  const statusLine = complete ? 'Your identity is fully verified' : `Next: ${STAGE_LABELS[activeStage]!.toLowerCase()}`
   const statusSub = complete
-    ? 'Every wallet linked to this identity now carries verified status and the lending discount.'
+    ? 'Every linked wallet now carries verified status and the lending discount.'
     : activeStage === 0
-      ? 'Connect a wallet to start creating your ZKredit identity.'
+      ? 'Connect a wallet to get started.'
       : activeStage === 1
-        ? 'Your wallet is connected — create your identity to continue.'
+        ? 'Create your identity to continue.'
         : activeStage === 2
-          ? 'Your identity has been created. Linking your wallet on-chain unlocks verification.'
-          : 'Your wallet is linked. Verifying with Didit unlocks the lending discount for this group.'
+          ? 'Link your wallet to unlock verification.'
+          : 'Verify with Didit to unlock the lending discount.'
 
   return (
     <div className="mt-14 flex flex-col items-center text-center">
@@ -467,18 +464,16 @@ function ActiveCard({
       }}
     >
       <div aria-hidden className="absolute inset-x-6 top-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(127,235,217,0.5), transparent)' }} />
-      <div className="relative z-10 flex items-start gap-4">
+      <div className="relative z-10 flex flex-col items-center text-center">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-teal-bright/20 bg-teal-bright/10 text-teal-bright">
           {icon}
         </span>
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-bright">
-            Step {step} of {STAGE_LABELS.length}
-          </p>
-          <h3 className="mt-1.5 font-display text-xl font-semibold tracking-tight text-fog">{title}</h3>
-        </div>
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-bright">
+          Step {step} of {STAGE_LABELS.length}
+        </p>
+        <h3 className="mt-1.5 font-display text-xl font-semibold tracking-tight text-fog">{title}</h3>
       </div>
-      <div className="relative z-10">{children}</div>
+      <div className="relative z-10 flex flex-col items-center text-center">{children}</div>
     </div>
   )
 }
@@ -635,11 +630,10 @@ function KycActiveCard({ commitment, kyc }: { commitment: string | null; kyc: Re
         Refresh status
       </button>
 
-      <div className="mt-6 rounded-2xl border border-[rgba(233,206,158,0.14)] bg-[rgba(233,206,158,0.04)] px-4 py-3.5">
+      <div className="mt-6 w-full rounded-2xl border border-[rgba(233,206,158,0.14)] bg-[rgba(233,206,158,0.04)] px-4 py-3.5 text-left">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#E9CE9E]">One human, one identity</p>
         <p className="mt-2 text-xs leading-relaxed text-fog-muted">
-          The same real-world identity can only verify once. If it was already verified under a
-          different commitment, this one may not become verified — that's expected.
+          One real-world identity can only verify once, even across commitments.
         </p>
       </div>
 
@@ -693,7 +687,7 @@ function LinkedWallets({
           ))
         ) : (
           <div className="rounded-2xl border border-white/8 px-4.5 py-6 text-center text-[13px] text-fog-faint">
-            No wallets linked yet — link one above to get started.
+            No wallets linked yet.
           </div>
         )}
       </div>
@@ -732,16 +726,14 @@ function statusTone(status: KycStatus | null): { badge: string; detail: string }
   if (!status) {
     return {
       badge: 'bg-white/8 text-fog',
-      detail:
-        'No verification session has started yet. Launch the hosted identity check when you are ready to bind this commitment.',
+      detail: 'Start a hosted identity check when you are ready.',
     }
   }
 
   if (status.kyc_verified) {
     return {
       badge: 'bg-teal-bright/15 text-teal-bright',
-      detail:
-        'The identity commitment is approved and the KYC nullifier has been bound on-chain. Group wallets now inherit verified status.',
+      detail: 'Verified and bound on-chain. Every linked wallet inherits it.',
     }
   }
 
@@ -749,39 +741,40 @@ function statusTone(status: KycStatus | null): { badge: string; detail: string }
     case 'pending':
       return {
         badge: 'bg-white/8 text-fog',
-        detail: 'The verification session was created, but the hosted check has not finished yet.',
+        detail: 'Verification is in progress.',
       }
     case 'in_review':
       return {
         badge: 'bg-[#E9CE9E]/15 text-[#E9CE9E]',
-        detail: 'Documents were submitted and are currently under review by the provider.',
+        detail: 'Your documents are under review.',
       }
     case 'approved':
       return {
         badge: 'bg-haze-pink/15 text-haze-pink',
-        detail:
-          'Approval landed off-chain. The remaining step is the on-chain bind that flips KYC verified to true.',
+        detail: 'Approved. Waiting on the on-chain bind to finish.',
       }
     case 'declined':
       return {
         badge: 'bg-red-500/15 text-red-300',
-        detail: 'The verification request was declined. Start a fresh session if you need to retry with updated documents.',
+        detail: 'Verification was declined. Start a new session to retry.',
       }
     case 'abandoned':
       return {
         badge: 'bg-red-500/15 text-red-300',
-        detail: 'The hosted verification was started but not completed. You can open a new session and continue.',
+        detail: "Verification wasn't completed. Start a new session to continue.",
       }
     default:
       return {
         badge: 'bg-white/8 text-fog',
-        detail: 'No verification session is active for this commitment yet.',
+        detail: 'No active verification session.',
       }
   }
 }
 
 function InlineError({ message }: { message: string }) {
   return (
-    <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 text-xs text-red-300">{message}</p>
+    <p className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 text-left text-xs text-red-300">
+      {message}
+    </p>
   )
 }
