@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { registerWallet, leaveGroup } from '../lib/contracts/wallet-identity'
 import { getGroupMembers, recordMembership } from '../lib/identity'
 import { createKycSession, getKycStatus, type KycStatus } from '../lib/kyc'
@@ -521,52 +521,70 @@ function useKycStatus(commitment: string | null) {
   const [starting, setStarting] = useState(false)
   const [polling, setPolling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  useEffect(() => {
-    if (!commitment) {
-      setStatus(null)
-      setPolling(false)
-      return
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
     }
+    setPolling(false)
+  }, [])
 
-    let cancelled = false
-    let intervalId: ReturnType<typeof setInterval> | null = null
-
-    const refresh = async () => {
+  const refreshOnce = useCallback(
+    async (activeCommitment: string) => {
       try {
-        const next = await getKycStatus(commitment)
-        if (cancelled) return
+        const next = await getKycStatus(activeCommitment)
         setStatus(next)
         const shouldPoll =
           next.status === 'pending' ||
           next.status === 'in_review' ||
           (next.status === 'approved' && !next.kyc_verified)
-        setPolling(shouldPoll)
-        if (!shouldPoll && intervalId) {
-          clearInterval(intervalId)
-          intervalId = null
+        if (shouldPoll) {
+          setPolling(true)
+        } else {
+          stopPolling()
         }
+        return shouldPoll
       } catch (nextError) {
-        if (cancelled) return
         setError(String(nextError instanceof Error ? nextError.message : nextError))
-        setPolling(false)
-        if (intervalId) {
-          clearInterval(intervalId)
-          intervalId = null
-        }
+        stopPolling()
+        return false
       }
+    },
+    [stopPolling],
+  )
+
+  const startPolling = useCallback(
+    (activeCommitment: string) => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      intervalRef.current = setInterval(() => {
+        void refreshOnce(activeCommitment)
+      }, 4000)
+    },
+    [refreshOnce],
+  )
+
+  useEffect(() => {
+    if (!commitment) {
+      setStatus(null)
+      stopPolling()
+      return
     }
 
-    void refresh()
-    intervalId = setInterval(() => {
-      void refresh()
-    }, 4000)
+    let cancelled = false
+    void (async () => {
+      const shouldPoll = await refreshOnce(commitment)
+      if (!cancelled && shouldPoll) {
+        startPolling(commitment)
+      }
+    })()
 
     return () => {
       cancelled = true
-      if (intervalId) clearInterval(intervalId)
+      stopPolling()
     }
-  }, [commitment])
+  }, [commitment, refreshOnce, startPolling, stopPolling])
 
   const startVerification = async () => {
     if (!commitment) return
@@ -575,8 +593,8 @@ function useKycStatus(commitment: string | null) {
     try {
       const session = await createKycSession(commitment)
       window.open(session.url, '_blank', 'noopener,noreferrer')
-      setPolling(true)
-      setStatus(await getKycStatus(commitment))
+      await refreshOnce(commitment)
+      startPolling(commitment)
     } catch (nextError) {
       setError(String(nextError instanceof Error ? nextError.message : nextError))
     } finally {
@@ -587,11 +605,7 @@ function useKycStatus(commitment: string | null) {
   const refresh = () => {
     if (!commitment) return
     setError(null)
-    void getKycStatus(commitment)
-      .then(setStatus)
-      .catch((nextError) => {
-        setError(String(nextError instanceof Error ? nextError.message : nextError))
-      })
+    void refreshOnce(commitment)
   }
 
   return { status, starting, polling, error, startVerification, refresh }

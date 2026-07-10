@@ -22,6 +22,11 @@ fly secrets set \
   CONTRACT_ID_MOCK_LENDING_POOL="C...from-mainnet-deploy" \
   CONTRACT_ID_WALLET_IDENTITY="C...from-mainnet-deploy" \
   CORS_ALLOWED_ORIGINS="https://your-app.vercel.app" \
-  REDIS_URL="rediss://...upstash-url"
+  REDIS_URL="rediss://...upstash-url" \
+  DIDIT_API_KEY="paste-from-Didit-Business-Console-API-Keys" \
+  DIDIT_WEBHOOK_SECRET="paste-from-Didit-Business-Console-Webhooks" \
+  DIDIT_WORKFLOW_ID="paste-from-Didit-Business-Console-Workflows" \
+  DIDIT_CALLBACK_URL="https://zkredit-api.fly.dev/api/v1/kyc/webhook" \
+  KYC_NULLIFIER_PEPPER="generate-a-random-32+-byte-secret-openssl-rand-hex-32"
 
 echo "Secrets set. Deploy with:  fly deploy   (runs 'alembic upgrade head' first)"

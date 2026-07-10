@@ -13,6 +13,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -60,7 +61,17 @@ async def create_kyc_session(payload: KycSessionRequest) -> KycSessionResponse:
     provider = get_kyc_provider(get_settings())
     if provider is None:
         raise HTTPException(status_code=503, detail="KYC provider is not configured")
-    session = await provider.create_session(payload.commitment)
+    try:
+        session = await provider.create_session(payload.commitment)
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "Didit session creation rejected (%s): %s",
+            exc.response.status_code,
+            exc.response.text,
+        )
+        raise HTTPException(
+            status_code=502, detail="Didit rejected the verification session request"
+        ) from exc
     return KycSessionResponse(session_id=session.session_id, url=session.url)
 
 
