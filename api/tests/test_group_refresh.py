@@ -1,4 +1,4 @@
-"""Phase 4.3 tests: group membership, group re-score trigger, auto-refresh sweep."""
+"""Tests for group membership, re-score, and refresh sweep behavior."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "contracts" / "bind
 import api.routes.v1 as v1
 import api.services.group_rescore as group_rescore
 from api.identity import store as membership_store
+from api.kyc import store as kyc_store
 from api.services.refresh_sweep import find_refreshable
 from ml.data.db import create_session_factory, init_db
 from ml.data.models import Attestation, Operation
@@ -153,6 +154,50 @@ async def test_group_rescore_submits_when_configured(session_factory, monkeypatc
     assert captured["commitment"] == bytes.fromhex(COMMITMENT)
     assert captured["confidence"] == 4200  # 0.42 -> bps
     assert captured["risk_bucket"] == 3
+    assert captured["kyc_verified"] is False
+
+
+@pytest.mark.asyncio
+async def test_group_rescore_marks_kyc_verified_after_bind(
+    session_factory, monkeypatch
+) -> None:
+    await membership_store.record_membership(
+        session_factory, wallet_address=WALLET_A, commitment=COMMITMENT
+    )
+    await kyc_store.record_verification(
+        session_factory,
+        commitment=COMMITMENT,
+        status="approved",
+        provider_session_id="sess-1",
+        nullifier="aa" * 32,
+    )
+    await kyc_store.set_bind_tx(
+        session_factory,
+        commitment=COMMITMENT,
+        nullifier="aa" * 32,
+        tx_hash="bind-tx-123",
+    )
+
+    async def _fake_attest_group(members, **kw):
+        return _FakeResult()
+
+    captured = {}
+
+    def _fake_submit(**kwargs):
+        captured.update(kwargs)
+        return "txhash123"
+
+    import importlib
+
+    sa = importlib.import_module("zkredit_contracts.submit_attestation")
+
+    monkeypatch.setattr(group_rescore, "attest_group", _fake_attest_group)
+    monkeypatch.setattr(group_rescore, "get_settings", lambda: _Settings())
+    monkeypatch.setattr(sa, "submit_update_group_score", _fake_submit)
+
+    tx = await group_rescore.run_group_rescore(session_factory, COMMITMENT)
+    assert tx == "txhash123"
+    assert captured["kyc_verified"] is True
 
 
 # --- refresh sweep ---------------------------------------------------------

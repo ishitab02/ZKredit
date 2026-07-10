@@ -16,6 +16,11 @@ export interface MembershipResult {
   members: string[]
 }
 
+export interface GroupMembersResult {
+  commitment: string
+  members: string[]
+}
+
 /** Record a wallet's group membership so the backend can re-score the group. */
 export async function recordMembership(
   walletAddress: string,
@@ -36,4 +41,21 @@ export async function recordMembership(
     throw new Error(body?.detail || `Membership record failed (${res.status})`)
   }
   return res.json() as Promise<MembershipResult>
+}
+
+/** Fetch the wallets currently linked to an identity commitment. */
+export async function getGroupMembers(
+  commitment: string,
+): Promise<GroupMembersResult> {
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}/api/v1/identity/group/${commitment}/members`)
+  } catch {
+    throw new Error(`Could not reach the ZKredit API at ${API_URL}.`)
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail || `Group members request failed (${res.status})`)
+  }
+  return res.json() as Promise<GroupMembersResult>
 }
