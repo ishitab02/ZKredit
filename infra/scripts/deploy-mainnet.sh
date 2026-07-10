@@ -179,12 +179,30 @@ else
 fi
 
 # Whitelist the RISC Zero guest image id so attest_with_risc0 accepts its receipts.
+#
+# ⚠️ The committed fixture (contracts/shared/src/risc0_vectors/image_id.bin) is the
+# OLD DEMO guest, NOT the live RunPod worker guest. Whitelisting the fixture makes
+# every real proof fail InvalidProof. Pass the live worker's guest id explicitly:
+#   RISC0_IMAGE_ID_HEX=368f4113dd09dcf85c8b5a8036933a8d5d2863255277d5fcb1aa2fdcbf989647
 RISC0_IMAGE_FILE="${REPO_ROOT}/contracts/shared/src/risc0_vectors/image_id.bin"
-if [ -f "${RISC0_IMAGE_FILE}" ]; then
+if [ -n "${RISC0_IMAGE_ID_HEX:-}" ]; then
+    IMAGE_HEX="${RISC0_IMAGE_ID_HEX}"
+    log "using RISC0_IMAGE_ID_HEX override: ${IMAGE_HEX}"
+elif [ -f "${RISC0_IMAGE_FILE}" ]; then
     IMAGE_HEX="$(python3 -c "import sys; sys.stdout.write(open(sys.argv[1],'rb').read().hex())" "${RISC0_IMAGE_FILE}")"
-    invoke "${RISK_ID}" "RiskAttestation::set_risc0_image_id" set_risc0_image_id --image_id "${IMAGE_HEX}"
+    log "WARNING ============================================================"
+    log "No RISC0_IMAGE_ID_HEX set — falling back to the committed fixture id:"
+    log "  ${IMAGE_HEX}"
+    log "This is the OLD DEMO guest, NOT the live worker guest. If this does not"
+    log "match the deployed RunPod worker, every real proof will fail InvalidProof."
+    log "==================================================================="
 else
     log "WARN: ${RISC0_IMAGE_FILE} not found — attest_with_risc0 will error until set_risc0_image_id is called."
+    IMAGE_HEX=""
+fi
+if [ -n "${IMAGE_HEX}" ]; then
+    log "about to whitelist guest image id: ${IMAGE_HEX}"
+    invoke "${RISK_ID}" "RiskAttestation::set_risc0_image_id" set_risc0_image_id --image_id "${IMAGE_HEX}"
 fi
 
 log "writing ${ENV_FILE}..."

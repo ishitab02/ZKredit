@@ -38,6 +38,14 @@ function makeFreighterError(kind: FreighterError["kind"], message: string): Frei
   return err
 }
 
+// Human-readable name for the network this build targets, derived from the
+// configured passphrase so the copy stays correct on both testnet and mainnet.
+function targetNetworkName(): string {
+  if (NETWORK.passphrase.startsWith("Public Global Stellar Network")) return "Mainnet"
+  if (NETWORK.passphrase.startsWith("Test SDF Network")) return "Testnet"
+  return "the correct network"
+}
+
 async function assertSupportedNetwork(): Promise<void> {
   const network = await getNetwork()
   if (network.error) {
@@ -46,7 +54,7 @@ async function assertSupportedNetwork(): Promise<void> {
   if (network.networkPassphrase !== NETWORK.passphrase) {
     throw makeFreighterError(
       "wrong_network",
-      `Freighter is connected to ${network.network || "another network"}. Switch it to Stellar Testnet and try again.`,
+      `Freighter is connected to ${network.network || "another network"}. Switch it to Stellar ${targetNetworkName()} and try again.`,
     )
   }
 }
