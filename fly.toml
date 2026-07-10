@@ -15,13 +15,11 @@ primary_region = 'sin'
 [env]
   HORIZON_URL = 'https://horizon.stellar.org'
   MODEL_DIR = 'model_store'
-  # Soroban contracts are only deployed on testnet so far (mainnet deploy is a
-  # deliberate later step — infra/scripts/deploy-mainnet.sh — that costs real
-  # XLM to fund). Horizon/STELLAR_NETWORK below stay mainnet independently:
-  # wallet data ingestion targets real mainnet accounts regardless of which
-  # network the Soroban contracts live on.
-  SOROBAN_NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015'
-  SOROBAN_RPC_URL = 'https://soroban-testnet.stellar.org'
+  # Soroban contracts deployed on MAINNET 2026-07-11 (infra/scripts/deploy-mainnet.sh).
+  # Horizon/STELLAR_NETWORK were already mainnet: wallet data ingestion targets
+  # real mainnet accounts independently of the Soroban network.
+  SOROBAN_NETWORK_PASSPHRASE = 'Public Global Stellar Network ; September 2015'
+  SOROBAN_RPC_URL = 'https://mainnet.sorobanrpc.com'
   STELLAR_NETWORK = 'public'
 
 [http_service]
