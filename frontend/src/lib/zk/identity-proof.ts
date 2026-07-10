@@ -125,7 +125,7 @@ export async function proveIdentity(
     g2(proof.pi_b),
     g1(proof.pi_c),
     nPubBuf,
-    ...publicSignals.map(s => toBE32(s)),
+    ...publicSignals.map((s: string) => toBE32(s)),
   )
 
   return {

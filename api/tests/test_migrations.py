@@ -28,7 +28,7 @@ def _alembic_config(db_url: str) -> Config:
 def test_upgrade_head_builds_model_schema(tmp_path: Path) -> None:
     db_path = tmp_path / "migrated.db"
     # env.py builds an async engine, so use the async sqlite driver.
-    command.upgrade(_alembic_config(f"sqlite+aiosqlite:///{db_path}"), "head")
+    command.upgrade(_alembic_config(f"sqlite+aiosqlite:///{db_path.as_posix()}"), "head")
 
     conn = sqlite3.connect(db_path)
     try:

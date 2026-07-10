@@ -73,7 +73,12 @@ def test_prove_wallet_uses_unbounded_timeout_for_runpod(
     captured: dict[str, object] = {}
 
     monkeypatch.setattr("ml.risc0.runpod_prover.runpod_configured", lambda: True)
-    monkeypatch.setattr("ml.risc0.runpod_prover.runpod_prove", lambda vector, commitment, *, timeout_s: captured.update(timeout_s=timeout_s) or object())
+    monkeypatch.setattr(
+        "ml.risc0.runpod_prover.runpod_prove",
+        lambda vector, commitment, *, timeout_s: (
+            captured.update(timeout_s=timeout_s) or object()
+        ),
+    )
     monkeypatch.setattr(prover, "prover_available", lambda: True)
 
     result = prover.prove_wallet(np.zeros(30, dtype=np.float64), "G" + "A" * 55)
