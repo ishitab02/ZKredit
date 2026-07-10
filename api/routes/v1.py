@@ -45,8 +45,8 @@ from ml.features.population_v1 import POPULATION_FEATURE_NAMES, extract_populati
 from ml.features.store import SCHEMA_VERSION, load_wallet_data
 from ml.models.registry import ModelArtifacts
 from ml.models.risc0_export import build_selected_vector_from_raw
-from ml.risc0.runpod_prover import runpod_configured
 from ml.risc0.prover import Risc0ProverUnavailableError, prove_wallet
+from ml.risc0.runpod_prover import runpod_configured
 from ml.types import AttestationResult, RiskBucket
 
 logger = logging.getLogger(__name__)

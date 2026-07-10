@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Close, Menu } from "./Icons";
 import { EASE } from "../lib/motion";
-import { ATTESTATION_PATH, LANDING_PATH, type SiteRoute } from "../lib/navigation";
+import { ATTESTATION_PATH, IDENTITY_PATH, LANDING_PATH, type SiteRoute } from "../lib/navigation";
 
 // Absolute (root-anchored) hrefs so the section links also work from the
 // attestation page: a click navigates back to the landing page and scrolls.
@@ -11,6 +11,7 @@ const LANDING_LINKS = [
   { label: "How it works", href: "/#how" },
   { label: "What's proven", href: "/#proven" },
   { label: "Use cases", href: "/#use-cases" },
+  { label: "Create Identity", href: IDENTITY_PATH },
 ];
 
 export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
@@ -74,7 +75,7 @@ export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
           </ul>
 
           <div className="hidden items-center gap-3 md:flex">
-            {route === "attestation" && (
+            {(route === "attestation" || route === "identity") && (
               <span className="testnet-pulse inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-bright opacity-70" />

@@ -7,6 +7,9 @@ import LandingPage from "./pages/LandingPage";
 import { getSiteRoute } from "./lib/navigation";
 
 const AttestationPage = lazy(() => import("./pages/AttestationPage"));
+const IdentityPage = lazy(() =>
+  import("./pages/Identity").then((m) => ({ default: m.Identity })),
+);
 
 export default function App() {
   const [route, setRoute] = useState(() => getSiteRoute());
@@ -45,6 +48,7 @@ export default function App() {
   }, [route]);
 
   const isAttestation = route === "attestation";
+  const isIdentity = route === "identity";
 
   const content = (
     <>
@@ -58,11 +62,19 @@ export default function App() {
       <Nav route={route} />
       <main id="main">
         {isAttestation ? (
-          <Suspense fallback={<RouteFallback />}>
+          <Suspense fallback={<RouteFallback label="attestation" />}>
             <AttestationPage
               walletAddress={walletAddress}
               onWalletConnected={setWalletAddress}
             />
+          </Suspense>
+        ) : isIdentity ? (
+          <Suspense fallback={<RouteFallback label="identity" />}>
+            <section className="relative overflow-hidden pt-28 pb-24 md:pt-32 md:pb-36">
+              <div className="container-page relative z-10">
+                <IdentityPage />
+              </div>
+            </section>
           </Suspense>
         ) : (
           <LandingPage />
@@ -87,18 +99,26 @@ export default function App() {
   );
 }
 
-function RouteFallback() {
+function RouteFallback({ label }: { label: "attestation" | "identity" }) {
+  const copy =
+    label === "identity"
+      ? {
+          heading: "Loading identity route",
+          detail: "Preparing the identity, wallet-linking, and KYC flow.",
+        }
+      : {
+          heading: "Loading attestation route",
+          detail: "Preparing the wallet attestation flow and contract client.",
+        };
   return (
     <section className="relative overflow-hidden pt-28 pb-24 md:pt-32 md:pb-36">
       <div className="container-page relative z-10">
         <div className="mx-auto max-w-2xl">
           <div className="surface p-6 md:p-8">
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-fog-faint">
-              Loading attestation route
+              {copy.heading}
             </p>
-            <p className="mt-3 text-sm text-fog-muted">
-              Preparing the wallet attestation flow and contract client.
-            </p>
+            <p className="mt-3 text-sm text-fog-muted">{copy.detail}</p>
           </div>
         </div>
       </div>

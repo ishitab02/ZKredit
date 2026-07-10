@@ -27,15 +27,21 @@ def normalize_async_url(url: str) -> str:
     ``postgresql://…?sslmode=require&channel_binding=require``. Rewrite the
     scheme to ``postgresql+asyncpg`` and drop the libpq-only query params so the
     same connection string works verbatim in ``.env`` and ``fly secrets``.
+
+    Non-Postgres URLs (e.g. ``sqlite+aiosqlite://`` in tests) pass through
+    untouched: ``urlsplit``/``urlunsplit`` silently drop a leading slash for
+    schemes outside ``urllib.parse.uses_netloc``, which corrupts absolute
+    SQLite paths (``sqlite+aiosqlite:////tmp/x.db`` loses a slash and "tmp"
+    gets misread as a hostname).
     """
     parts = urlsplit(url)
     scheme = parts.scheme
-    if scheme in {"postgres", "postgresql"}:
-        scheme = "postgresql+asyncpg"
+    if scheme not in {"postgres", "postgresql", "postgresql+asyncpg"}:
+        return url
     query = urlencode(
         [(k, v) for k, v in parse_qsl(parts.query) if k not in _ASYNCPG_INCOMPATIBLE_PARAMS]
     )
-    return urlunsplit((scheme, parts.netloc, parts.path, query, parts.fragment))
+    return urlunsplit(("postgresql+asyncpg", parts.netloc, parts.path, query, parts.fragment))
 
 
 def create_engine(database_url: str | None = None) -> AsyncEngine:
