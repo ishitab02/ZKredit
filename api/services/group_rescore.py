@@ -74,7 +74,7 @@ async def run_group_rescore(
     # KYC gate carries onto the group record (the contract also overlays its own
     # KycVerified storage on read, but keep the submitted flag honest).
     kyc = await kyc_store.read_verification(session_factory, commitment)
-    kyc_verified = bool(kyc and kyc.status == "approved" and kyc.nullifier)
+    kyc_verified = bool(kyc and kyc.status == "approved" and kyc.bind_tx_hash)
 
     now = int(datetime.now(UTC).timestamp())
     from zkredit_contracts.submit_attestation import submit_update_group_score

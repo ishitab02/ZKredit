@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { recordMembership } from './identity'
+import { getGroupMembers, recordMembership } from './identity'
 
 const WALLET = 'G' + 'A'.repeat(55)
 const COMMITMENT = 'cc'.repeat(32)
@@ -40,5 +40,22 @@ describe('identity membership client', () => {
       }),
     )
     await expect(recordMembership(WALLET, COMMITMENT)).rejects.toThrow('bad commitment')
+  })
+
+  it('fetches group members for a commitment', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        commitment: COMMITMENT,
+        members: [WALLET],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await getGroupMembers(COMMITMENT)
+    expect(result.members).toEqual([WALLET])
+    expect(String(fetchMock.mock.calls[0][0])).toContain(
+      `/api/v1/identity/group/${COMMITMENT}/members`,
+    )
   })
 })

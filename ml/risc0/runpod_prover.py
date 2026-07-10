@@ -42,7 +42,12 @@ def _headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
-def runpod_prove(feature_vector: Sequence[float], commitment: bytes, *, timeout_s: int):
+def runpod_prove(
+    feature_vector: Sequence[float],
+    commitment: bytes,
+    *,
+    timeout_s: int | None,
+):
     """Prove one wallet on the RunPod worker; return a :class:`Risc0Proof`.
 
     Submits an async job (``/run``) and polls ``/status`` until it completes,
@@ -81,8 +86,8 @@ def runpod_prove(feature_vector: Sequence[float], commitment: bytes, *, timeout_
     if not job_id:
         raise RuntimeError(f"RunPod /run returned no job id: {resp.text[:300]}")
 
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
+    deadline = None if timeout_s is None or timeout_s <= 0 else time.monotonic() + timeout_s
+    while deadline is None or time.monotonic() < deadline:
         try:
             st = httpx.get(f"{base}/status/{job_id}", headers=headers, timeout=30)
         except httpx.HTTPError:
@@ -102,9 +107,11 @@ def runpod_prove(feature_vector: Sequence[float], commitment: bytes, *, timeout_
         # IN_QUEUE / IN_PROGRESS — keep polling.
         time.sleep(s.runpod_poll_interval_s)
 
-    with contextlib.suppress(httpx.HTTPError):
-        httpx.post(f"{base}/cancel/{job_id}", headers=headers, timeout=15)
-    raise RuntimeError(f"RunPod proof timed out after {timeout_s}s (job {job_id})")
+    if deadline is not None:
+        with contextlib.suppress(httpx.HTTPError):
+            httpx.post(f"{base}/cancel/{job_id}", headers=headers, timeout=15)
+        raise RuntimeError(f"RunPod proof timed out after {timeout_s}s (job {job_id})")
+    raise RuntimeError(f"RunPod proof stopped polling unexpectedly (job {job_id})")
 
 
 def _decode_output(output: dict):
@@ -112,7 +119,10 @@ def _decode_output(output: dict):
     from ml.risc0.prover import Risc0Proof
 
     if "error" in output:
-        raise RuntimeError(f"RunPod worker error: {output['error']}")
+        # build_id identifies the worker image; without it a stale cached image
+        # is indistinguishable from a broken fix. Absent on pre-BUILD_ID images.
+        build = output.get("build_id", "unknown")
+        raise RuntimeError(f"RunPod worker error (image {build}): {output['error']}")
     try:
         seal = base64.b64decode(output["seal"])
         journal = base64.b64decode(output["journal"])

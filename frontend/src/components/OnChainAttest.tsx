@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { connectFreighter, FreighterError, getConnectedAddress } from "../lib/freighter";
 import {
   AttestationPrepareError,
-  getAttestationJob,
-  isQueuedAttestation,
   prepareAttestation,
+  type AttestationPreparePhaseMeta,
   type PreparedAttestation,
 } from "../lib/attestor";
 import { type AttestationData } from "../lib/contracts";
@@ -77,43 +76,6 @@ export default function OnChainAttest({
     return () => cancelAnimationFrame(id);
   }, [phase]);
 
-  useEffect(() => {
-    if (!wallet || !queueState || phase !== "waiting") return;
-
-    let cancelled = false;
-    let timeoutId: number | undefined;
-
-    const poll = async () => {
-      try {
-        const next = await getAttestationJob(queueState.jobId);
-        if (cancelled) return;
-
-        setPrepareMeta({
-          submissionMode: next.submission_mode,
-          submissionDetail: next.submission_detail,
-        });
-
-        if (isQueuedAttestation(next)) {
-          setQueueState({ jobId: next.job_id, status: next.status });
-          timeoutId = window.setTimeout(poll, 4000);
-          return;
-        }
-
-        await completePreparedAttestation(wallet, next);
-      } catch (e) {
-        if (cancelled) return;
-        setError(describeError(e));
-        setPhase("error");
-      }
-    };
-
-    timeoutId = window.setTimeout(poll, 4000);
-    return () => {
-      cancelled = true;
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-    };
-  }, [wallet, queueState, phase]);
-
   async function connect() {
     setError(null);
     setPhase("connecting");
@@ -139,24 +101,26 @@ export default function OnChainAttest({
     try {
       // 1. attestor scores + signs its authorization entry (server-side key).
       setPhase("creating_session");
-      // The current backend performs session setup inside prepareAttestation.
       setPhase("preparing");
-      const result = await prepareAttestation(wallet);
+      const result = await prepareAttestation(wallet, handlePreparePhase);
       setPrepareMeta({
         submissionMode: result.submission_mode,
         submissionDetail: result.submission_detail,
       });
-
-      if (isQueuedAttestation(result)) {
-        setQueueState({ jobId: result.job_id, status: result.status });
-        setPhase("waiting");
-        return;
-      }
       await completePreparedAttestation(wallet, result);
     } catch (e) {
       setError(describeError(e));
       setPhase("error");
     }
+  }
+
+  function handlePreparePhase(_phase: "queued" | "proving", meta: AttestationPreparePhaseMeta) {
+    setPrepareMeta({
+      submissionMode: meta.submissionMode,
+      submissionDetail: meta.submissionDetail,
+    });
+    setQueueState({ jobId: meta.jobId, status: meta.status });
+    setPhase("waiting");
   }
 
   async function completePreparedAttestation(

@@ -65,3 +65,18 @@ def test_static_endpoint_unreachable_falls_back_fast() -> None:
     with pytest.raises(prover.Risc0ProverUnavailableError):
         _assert_static_endpoint_reachable("http://127.0.0.1:9")
     assert time.monotonic() - start < 5.0
+
+
+def test_prove_wallet_uses_unbounded_timeout_for_runpod(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("ml.risc0.runpod_prover.runpod_configured", lambda: True)
+    monkeypatch.setattr("ml.risc0.runpod_prover.runpod_prove", lambda vector, commitment, *, timeout_s: captured.update(timeout_s=timeout_s) or object())
+    monkeypatch.setattr(prover, "prover_available", lambda: True)
+
+    result = prover.prove_wallet(np.zeros(30, dtype=np.float64), "G" + "A" * 55)
+
+    assert result is not None
+    assert captured["timeout_s"] is None

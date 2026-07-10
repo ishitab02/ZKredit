@@ -61,6 +61,9 @@ COPY scripts ./scripts
 # api/kyc/service.py import `zkredit_contracts` at runtime; without this the
 # import fails (ModuleNotFoundError) and every on-chain write silently degrades.
 COPY contracts/bindings/python ./contracts/bindings/python
+# The co-sign path uses these committed vectors only when live proving is
+# unavailable, so the fallback remains functional and honestly labeled.
+COPY contracts/shared/src/risc0_vectors ./contracts/shared/src/risc0_vectors
 # Real trained model artifacts (full.joblib / distilled.joblib / registry.json),
 # trained on the population data. Baked into the image so the API serves real
 # scores. (.dockerignore is configured to include these.)

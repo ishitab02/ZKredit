@@ -138,7 +138,7 @@ async def kyc_status(commitment: str, session_factory: SessionFactoryDep) -> Kyc
     return KycStatusResponse(
         commitment=commitment,
         status=record.status,
-        kyc_verified=record.status == "approved" and record.nullifier is not None,
+        kyc_verified=record.status == "approved" and record.bind_tx_hash is not None,
         bind_tx_hash=record.bind_tx_hash,
     )
 

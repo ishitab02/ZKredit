@@ -45,6 +45,7 @@ from ml.features.population_v1 import POPULATION_FEATURE_NAMES, extract_populati
 from ml.features.store import SCHEMA_VERSION, load_wallet_data
 from ml.models.registry import ModelArtifacts
 from ml.models.risc0_export import build_selected_vector_from_raw
+from ml.risc0.runpod_prover import runpod_configured
 from ml.risc0.prover import Risc0ProverUnavailableError, prove_wallet
 from ml.types import AttestationResult, RiskBucket
 
@@ -293,6 +294,7 @@ async def _try_live_receipt(
     Returns immediately when the prover toolchain is absent (the default here), so
     the co-sign path degrades to the committed fixture instead of failing.
     """
+    live_runpod = runpod_configured()
     wallet = await load_wallet_data(stellar_address, session_factory)
     wallet = wallet or WalletData(address=stellar_address, account={}, operations=[])
     features = extract_population_features(wallet)
@@ -300,8 +302,12 @@ async def _try_live_receipt(
     try:
         proof = await asyncio.to_thread(prove_wallet, selected, stellar_address)
     except Risc0ProverUnavailableError:
+        if live_runpod:
+            raise
         return None, None
     except Exception:  # proving attempted but failed: fall back, do not 500.
+        if live_runpod:
+            raise
         logger.warning("live RISC Zero proving failed; using fixture", exc_info=True)
         return None, None
     return proof.seal, proof.journal

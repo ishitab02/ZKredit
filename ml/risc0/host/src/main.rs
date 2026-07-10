@@ -144,6 +144,14 @@ fn main() {
         .unwrap()
         .build()
         .unwrap();
+    // Which STARK→SNARK wrap runs depends on the build: with `-F cuda`,
+    // risc0-groth16-sys proves the Groth16 natively on the GPU; without it,
+    // risc0 shells out to the x86 `risc0/risc0-groth16-prover` Docker image.
+    // Print the real one -- the old unconditional "Docker" text sent a crash
+    // investigation looking at the wrong stage.
+    #[cfg(feature = "cuda")]
+    println!("proving (groth16, native GPU STARK→SNARK)…");
+    #[cfg(not(feature = "cuda"))]
     println!("proving (groth16, Docker STARK→SNARK — first run is slow)…");
     let receipt = default_prover()
         .prove_with_opts(env, RISK_GUEST_ELF, &ProverOpts::groth16())
