@@ -2,6 +2,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   getAttestationRecord,
+  getModelInfo,
   getWalletFeatures,
   isValidStellarAddress,
   type AttestationRecordResponse,
@@ -65,7 +66,7 @@ export default function TryAttestation({
   const [record, setRecord] = useState<AttestationRecordResponse | null>(null);
   const [features, setFeatures] = useState<FeatureSummaryResponse | null>(null);
   const [featuresUnavailable, setFeaturesUnavailable] = useState(false);
-  const [modelInfo] = useState<ModelInfoResponse | null>(null);
+  const [modelInfo, setModelInfo] = useState<ModelInfoResponse | null>(null);
 
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
