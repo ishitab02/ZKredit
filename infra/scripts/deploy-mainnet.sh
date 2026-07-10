@@ -39,6 +39,13 @@ export STELLAR_NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
 export SOROBAN_RPC_URL="${NETWORK_RPC}"
 export SOROBAN_NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE}"
 
+# Inclusion-fee bid, in stroops. The CLI defaults to 100, but mainnet surge
+# pricing routinely pushes the required minimum to ~200+, so a bare deploy fails
+# with TxInsufficientFee. 10000 stroops (0.001 XLM) is a wide margin over surge
+# and trivial in absolute cost. Charged per transaction (resource fee is added on
+# top from simulation). Override with ZKREDIT_INCLUSION_FEE if the network is hot.
+INCLUSION_FEE="${ZKREDIT_INCLUSION_FEE:-10000}"
+
 ADMIN_ALIAS="zkredit_admin_mainnet"
 ATTESTOR_ALIAS="zkredit_attestor_mainnet"
 
@@ -100,6 +107,7 @@ deploy_contract() {
         --wasm "${_wasm}" \
         --source "${ADMIN_ALIAS}" \
         --network "${NETWORK}" \
+        --inclusion-fee "${INCLUSION_FEE}" \
         -- \
         --admin "${_admin}")"
     log "  -> ${_id}"
@@ -115,6 +123,7 @@ invoke() {
         --id "${_id}" \
         --source "${ADMIN_ALIAS}" \
         --network "${NETWORK}" \
+        --inclusion-fee "${INCLUSION_FEE}" \
         -- \
         "$@"
 }
