@@ -133,12 +133,12 @@ def prepare_attestation_submission(
     exercise the Freighter signature + submission step even where the prover
     toolchain is unavailable — labeled honestly per Global Rule #2.
     """
-    if not _can_prepare_partial_xdr(params):
+    live = seal is not None and journal is not None
+    if not _can_prepare_partial_xdr(params, require_fixture=not live):
         raise ValueError(
             "RISC Zero co-sign preparation is unavailable in this environment"
         )
 
-    live = seal is not None and journal is not None
     if live:
         seal_bytes, journal_bytes = seal, journal
         submission_mode: Literal["live_cosign", "demo_fixture_cosign"] = "live_cosign"
@@ -294,15 +294,17 @@ def _fallback_reason(params: AttestationParams) -> str:
     return "used local fallback"
 
 
-def _can_prepare_partial_xdr(params: AttestationParams) -> bool:
-    """True when we can build a co-signable XDR from the committed demo fixture."""
+def _can_prepare_partial_xdr(
+    params: AttestationParams, *, require_fixture: bool = True
+) -> bool:
+    """True when the configured helper can build a co-signable XDR."""
     if build_risc0_attestation_cosigned_xdr is None or ChainAttestationParams is None:
         return False
     cfg = get_settings()
     return bool(
         cfg.contract_id_risk_attestation
         and cfg.attestor_seed
-        and _RISC0_FIXTURES.exists()
+        and (not require_fixture or _RISC0_FIXTURES.exists())
     )
 
 
