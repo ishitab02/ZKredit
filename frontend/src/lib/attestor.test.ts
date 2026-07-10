@@ -148,6 +148,97 @@ describe("prepareAttestation (unified API cutover, 1.7)", () => {
     expect(jobOpts.credentials).toBe("include");
   });
 
+  it("unwraps a succeeded job wrapper ({status, result}) to the prepared attestation", async () => {
+    // The real backend job-status response ALWAYS carries `job_id` and nests the
+    // signable payload under `result` — so a succeeded job must be unwrapped, not
+    // treated as still-queued (which hung the stepper on step 02 in production).
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        job_id: "job-123",
+        status: "succeeded",
+        submission_mode: "live_cosign",
+        result: {
+          partial_xdr: "XDR==",
+          risk_bucket: 2,
+          confidence: 0.9,
+          distilled_model_hash: "bb",
+          submission_mode: "live_cosign",
+          submission_detail: "done",
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getAttestationJob("job-123");
+
+    expect("job_id" in result).toBe(false);
+    expect((result as { partial_xdr: string }).partial_xdr).toBe("XDR==");
+    expect(result.submission_mode).toBe("live_cosign");
+  });
+
+  it("drives a wrapped queued->succeeded job to completion (no infinite poll)", async () => {
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: TimerHandler) => {
+      if (typeof fn === "function") fn();
+      return 0;
+    }) as typeof setTimeout);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: "ok" }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_id: "job-9",
+          status: "queued",
+          submission_mode: "live_cosign",
+          submission_detail: "waiting",
+          risk_bucket: 0,
+          confidence: 0,
+          distilled_model_hash: "",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_id: "job-9",
+          status: "succeeded",
+          submission_mode: "live_cosign",
+          result: {
+            partial_xdr: "XDR==",
+            risk_bucket: 2,
+            confidence: 0.9,
+            distilled_model_hash: "bb",
+            submission_mode: "live_cosign",
+            submission_detail: "done",
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareAttestation(WALLET);
+
+    expect(result.partial_xdr).toBe("XDR==");
+    // session + prepare + one job poll = 3 (must not keep polling a succeeded job)
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws job_failed with the wrapper's error_detail on a failed job", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        job_id: "job-x",
+        status: "failed",
+        error_detail: "Simulation transaction failed",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getAttestationJob("job-x")).rejects.toMatchObject({
+      kind: "job_failed",
+    });
+  });
+
   it("maps missing job-status support to a dedicated error", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: false,

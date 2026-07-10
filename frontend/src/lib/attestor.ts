@@ -201,11 +201,50 @@ export async function getAttestationJob(jobId: string): Promise<PollJobResult> {
     throw makePrepareError('request_failed', detail)
   }
 
-  const payload = (await res.json()) as PollJobResult & { error?: string }
-  if ('error' in payload && payload.error) {
+  // The job-status endpoint returns a WRAPPER that always carries `job_id`, with
+  // the finished payload nested under `result`. So "still queued?" cannot be
+  // decided by `"job_id" in payload` (that is always true here) — branch on
+  // `status` and unwrap `result` on success, or `prepareAttestation`'s
+  // `while (isQueuedAttestation(result))` loop treats a succeeded job as
+  // perpetually queued and never advances to the Freighter sign step.
+  const payload = (await res.json()) as {
+    job_id: string
+    status?: string
+    submission_mode?: string
+    submission_detail?: string
+    error_detail?: string | null
+    error?: string
+    result?: (PreparedAttestation & { submission_mode?: string; submission_detail?: string }) | null
+  }
+  if (payload.error) {
     throw makePrepareError('job_failed', payload.error)
   }
-  return payload
+  if (payload.status === 'failed') {
+    throw makePrepareError(
+      'job_failed',
+      payload.error_detail ||
+        'The proving job failed. Check the attestor worker logs and retry.',
+    )
+  }
+  if (payload.status === 'succeeded') {
+    if (!payload.result?.partial_xdr) {
+      throw makePrepareError(
+        'job_failed',
+        'The proving job finished but returned no signable transaction.',
+      )
+    }
+    // Flatten to a PreparedAttestation (no `job_id`) so `isQueuedAttestation`
+    // is false and the caller proceeds to sign. Keep the submission mode/detail
+    // (fall back to the wrapper's) so the Live/Fixture badge still renders.
+    return {
+      ...payload.result,
+      submission_mode: payload.result.submission_mode ?? payload.submission_mode ?? '',
+      submission_detail:
+        payload.result.submission_detail ?? payload.submission_detail ?? '',
+    } as PreparedAttestation
+  }
+  // Still queued or proving: keep the QueuedAttestation shape (carries job_id).
+  return payload as unknown as QueuedAttestation
 }
 
 function delay(ms: number): Promise<void> {
