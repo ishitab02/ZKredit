@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { RISK_BUCKET_COLORS, RISK_BUCKET_LABELS } from "../../lib/contracts/types";
+import { NETWORK } from "../../lib/contracts/config";
 
 // The centrepiece: a private-bank "metal card" that presents the finished
 // attestation as a credential rather than a dashboard readout. Everything on
@@ -30,6 +31,10 @@ function isoDate(unixSeconds: bigint): string {
   if (!Number.isFinite(ms) || ms <= 0) return "-";
   return new Date(ms).toISOString().slice(0, 10);
 }
+
+const STELLAR_EXPERT_NETWORK = NETWORK.passphrase.startsWith("Public Global Stellar Network")
+  ? "public"
+  : "testnet";
 
 export default function AttestCredential({
   creditScore,
@@ -84,7 +89,7 @@ export default function AttestCredential({
   const explorer =
     txHash ? (
       <a
-        href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
+        href={`https://stellar.expert/explorer/${STELLAR_EXPERT_NETWORK}/tx/${txHash}`}
         target="_blank"
         rel="noreferrer"
         onClick={(e) => e.stopPropagation()}
