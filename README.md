@@ -150,7 +150,7 @@ M2 was originally one milestone; it split into three substantial, largely-indepe
 | **M2a** | Proving backend: RISC Zero per-wallet proving offloaded to a self-hosted Bento GPU node (STARK + Groth16 wrap), async job queue, honest fixture fallback | Done (testnet) |
 | **M2b** | KYC-bound Sybil resistance: Didit KYC, one-way nullifier registry (`bind_kyc`), anti-wallet-hopping lending gate, holistic multi-wallet group re-score | Done (testnet) |
 | **M2c** | Versioned re-attestation & freshness: re-attest after new activity, auto-refresh near expiry, group re-score triggers | Done (testnet) |
-| **M3** | Mainnet deploy + multi-attestor registry + security audit (incl. the identity circuit's trusted setup) + open-source release | Planned |
+| **M3** | Mainnet deploy + multi-attestor registry + security audit (incl. the identity circuit's trusted setup) + open-source release | In progress — contracts and Fly API live on mainnet |
 
 *Funding amounts are being revised to reflect the M2 split and current recurring-cost picture (scale-to-zero proving; KYC $0 up to 500 verifications/mo). The prior plan targeted ~$85K across M1–M3.*
 
@@ -161,15 +161,23 @@ M2 was originally one milestone; it split into three substantial, largely-indepe
 - The ML model is bootstrapped on **synthetic Stellar labels** (heuristic-derived from on-chain behavior). This is documented, not hidden; real labeled repayment data is the path to a production-grade model.
 - **"ZK verified" applies to the distilled model only.** The full model's output is hash-anchored, not proven. The `zk_verified` flag on every attestation makes this explicit.
 - **Sybil resistance is "one human → at most one credit identity," not "we see all your wallets."** On a permissionless chain you cannot technically force disclosure of every wallet a person controls. The enforceable guarantee is: no meaningful borrowing capacity without KYC, and the KYC nullifier blocks a second identity per verified human. The residual attack (using a *different real person's* documents) is identity fraud — a much higher bar, mitigated by liveness + face match, not eliminated.
-- The identity circuit's trusted setup is a **single-contributor dev ceremony** — acceptable for testnet, a named audit item for mainnet (M3).
-- **Testnet, not mainnet.** The RISC Zero verify → chain → lending pipeline is validated live on Stellar *testnet*; mainnet is M3. Protocol 25 (BN254 host functions) is live on mainnet, so the on-chain verifier is mainnet-ready.
+- The identity circuit's trusted setup is a **single-contributor dev ceremony** — a named audit item for mainnet (M3).
+- Mainnet contracts are live, but the first real user-signed attestation and KYC demonstration remain launch-validation steps. Protocol 25 (BN254 host functions) is live on mainnet.
 - Stellar lending is young. The attestation primitive is built for where Stellar is going; the integration surface (Blend, Templar, funded neobanks) is real but early.
 
 ---
 
 ## Status
 
-Active development following Stellar BuildStation Kolkata (June 2026). The RISC Zero ZK pipeline, KYC-bound Sybil resistance, and re-attestation are validated live on **testnet**; mainnet is the M3 milestone. Not yet for production use.
+Active development following Stellar BuildStation Kolkata (June 2026). The RISC Zero ZK pipeline, KYC-bound Sybil resistance, and re-attestation are validated on testnet; the production API and core contracts now target **Stellar mainnet**. Mainnet launch validation is in progress.
+
+### Mainnet deployment (2026-07-11)
+
+- AttestorRegistry: `CDUBICTTWSTVNUINAOLGZQHZIEBAPRRGORVQDGB3YWWTE26L4742Z65R`
+- RiskAttestation: `CCPG7LQMS4W3WHLWQK4JNLNGGMC66MQFZ37PAIVCGUVRJXJQIL7JJLES`
+- WalletIdentity: `CC2K2NHCWTSSUJJ43SF2O5CF4AY6N3LQSNUKTQFTXAQZDWR62FCJ4EEL`
+- MockLendingPool is intentionally not deployed on mainnet yet.
+- API: `https://zkredit-api.fly.dev` (Fly.io, mainnet Soroban RPC, live RunPod proving configured).
 
 ---
 

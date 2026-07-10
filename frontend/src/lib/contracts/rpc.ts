@@ -29,6 +29,10 @@ function server() {
   return new rpc.Server(NETWORK.rpcUrl)
 }
 
+function networkName(): string {
+  return NETWORK.passphrase.startsWith('Public Global Stellar Network') ? 'mainnet' : 'testnet'
+}
+
 function makeRpcError(kind: ContractRpcError['kind'], message: string): ContractRpcError {
   const err = new Error(message) as ContractRpcError
   err.kind = kind
@@ -40,7 +44,7 @@ function parseSourceAccountError(error: unknown): ContractRpcError {
   if (/not found|404|unknown account|missing account|does not exist/i.test(message)) {
     return makeRpcError(
       'source_account_unavailable',
-      'This Stellar testnet wallet is not funded or does not exist on Soroban yet.',
+      `This Stellar ${networkName()} wallet is not funded or does not exist on Soroban yet.`,
     )
   }
   return makeRpcError('source_account_unavailable', message)
@@ -51,7 +55,7 @@ function parseSubmissionError(prefix: string, details: unknown): ContractRpcErro
   if (/insufficient|balance|underfunded|no account|tx_no_account/i.test(message)) {
     return makeRpcError(
       'source_account_unavailable',
-      'This Stellar testnet wallet does not have enough balance to submit the transaction.',
+      `This Stellar ${networkName()} wallet does not have enough balance to submit the transaction.`,
     )
   }
   return makeRpcError('submit_failed', `${prefix}: ${message}`)

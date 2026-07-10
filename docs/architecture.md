@@ -14,6 +14,24 @@ Three layers compose the system:
 2. **ZK proof layer** (`/ml/risc0/`) — runs the distilled RandomForest inference inside a RISC Zero zkVM guest, proves it as a STARK, and compresses that to a Groth16 (BN254) receipt verifiable on Soroban. (Pivoted from EZKL/Halo2 — see `docs/adr/0001-risc0-zkml-pipeline.md`.) A separate Poseidon identity circuit (`/ml/zk/identity_circuit/`, Circom→Groth16) proves multi-wallet linkage against the same BN254 verifier.
 3. **On-chain layer** (`/contracts/`, `/frontend/`) — Soroban contracts store attestations, manage authorized attestors, and let lending protocols read risk-adjusted loan terms.
 
+### 1.1 Mainnet deployment status
+
+The core contracts and production API were switched to Stellar mainnet on
+2026-07-11. MockLendingPool remains intentionally testnet-only until a real
+lending integration is selected.
+
+| Contract | Mainnet ID |
+|---|---|
+| AttestorRegistry | `CDUBICTTWSTVNUINAOLGZQHZIEBAPRRGORVQDGB3YWWTE26L4742Z65R` |
+| RiskAttestation | `CCPG7LQMS4W3WHLWQK4JNLNGGMC66MQFZ37PAIVCGUVRJXJQIL7JJLES` |
+| WalletIdentity | `CC2K2NHCWTSSUJJ43SF2O5CF4AY6N3LQSNUKTQFTXAQZDWR62FCJ4EEL` |
+
+The RiskAttestation instance is wired to the registry and WalletIdentity,
+and whitelists the live RISC Zero guest image
+`368f4113dd09dcf85c8b5a8036933a8d5d2863255277d5fcb1aa2fdcbf989647`.
+The registry authorizes the production attestor; WalletIdentity has the
+registry and identity verification key configured.
+
 ---
 
 ## 2. On-Chain vs Off-Chain Data

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import time
 
 import pytest
 
@@ -50,14 +51,41 @@ def _provider() -> DiditProvider:
 
 def test_webhook_signature_accepts_valid_and_rejects_tampered() -> None:
     provider = _provider()
-    body = json.dumps({"session_id": "s1", "status": "Approved"}).encode()
+    body = json.dumps(
+        {"session_id": "s1", "status": "Approved", "webhook_type": "status.updated"}
+    ).encode()
+    timestamp = str(int(time.time()))
     sig = hmac.new(b"shhh", body, hashlib.sha256).hexdigest()
+    headers = {"x-signature": sig, "x-timestamp": timestamp}
 
-    assert provider.verify_signature(body, {"x-signature": sig}) is True
-    assert provider.verify_signature(body, {"X-Signature": sig}) is True  # case-insensitive
-    assert provider.verify_signature(body + b"x", {"x-signature": sig}) is False  # body tampered
-    assert provider.verify_signature(body, {"x-signature": "deadbeef"}) is False
+    assert provider.verify_signature(body, headers) is True
+    assert provider.verify_signature(body, {"X-Signature": sig, "X-Timestamp": timestamp}) is True
+    assert provider.verify_signature(body + b"x", headers) is False  # body tampered
+    assert provider.verify_signature(body, {"x-signature": "deadbeef", "x-timestamp": timestamp}) is False
     assert provider.verify_signature(body, {}) is False  # missing header
+    assert provider.verify_signature(body, {"x-signature": sig, "x-timestamp": "1"}) is False
+
+
+def test_webhook_v2_signature_and_current_array_shape() -> None:
+    provider = _provider()
+    payload = {
+        "session_id": "s1",
+        "status": "Approved",
+        "webhook_type": "status.updated",
+        "vendor_data": COMMITMENT_A,
+        "decision": {
+            "id_verifications": [
+                {"document_number": "X123", "issuing_state": "IND"},
+            ]
+        },
+    }
+    body = json.dumps(payload, ensure_ascii=False).encode()
+    timestamp = str(int(time.time()))
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    sig = hmac.new(b"shhh", canonical, hashlib.sha256).hexdigest()
+    assert provider.verify_signature(
+        body, {"X-Signature-V2": sig, "X-Timestamp": timestamp}
+    ) is True
 
 
 @pytest.mark.asyncio
@@ -81,6 +109,32 @@ async def test_normalize_extracts_document_and_commitment() -> None:
     assert event.provider_session_id == "sess-123"
     assert event.status == "approved"
     assert event.commitment == "commitment-hex"
+    assert event.document == IdentityDocument(doc_number="X1234567", issuing_country="IND")
+
+
+@pytest.mark.asyncio
+async def test_normalize_extracts_current_v3_document_array() -> None:
+    provider = _provider()
+    body = json.dumps(
+        {
+            "session_id": "sess-v3",
+            "status": "Approved",
+            "vendor_data": COMMITMENT_A,
+            "decision": {
+                "id_verifications": [
+                    {
+                        "document_number": "X1234567",
+                        "issuing_state": "IND",
+                    }
+                ]
+            },
+        }
+    ).encode()
+
+    event = await provider.normalize(body)
+    assert event.provider_session_id == "sess-v3"
+    assert event.status == "approved"
+    assert event.commitment == COMMITMENT_A
     assert event.document == IdentityDocument(doc_number="X1234567", issuing_country="IND")
 
 
