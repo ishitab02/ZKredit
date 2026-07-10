@@ -79,6 +79,43 @@ export function Fingerprint(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function Wallet(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props} aria-hidden="true">
+      <rect x="3" y="6" width="18" height="13" rx="2.5" />
+      <path d="M3 9.5h18" />
+      <path d="M15.5 14.5h2.5" />
+    </svg>
+  );
+}
+
+export function Chain(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props} aria-hidden="true">
+      <path d="M9 15l6-6" />
+      <path d="M10 6l1-1a4 4 0 0 1 6 6l-1 1" />
+      <path d="M14 18l-1 1a4 4 0 0 1-6-6l1-1" />
+    </svg>
+  );
+}
+
+export function Copy(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props} aria-hidden="true">
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+export function Check(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props} aria-hidden="true">
+      <path d="M4 12.5l5 5L20 6.5" />
+    </svg>
+  );
+}
+
 export function Menu(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base} {...props} aria-hidden="true">
