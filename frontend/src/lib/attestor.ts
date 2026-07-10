@@ -72,7 +72,6 @@ export type PrepareAttestationResult = PreparedAttestation | QueuedAttestation
 export type PollJobResult = PreparedAttestation | QueuedAttestation
 
 const POLL_INTERVAL_MS = 2000
-const POLL_TIMEOUT_MS = 180000
 
 function makePrepareError(
   kind: AttestationPrepareError['kind'],
@@ -149,7 +148,6 @@ export async function prepareAttestation(
     meta: AttestationPreparePhaseMeta,
   ) => void,
 ): Promise<PreparedAttestation> {
-  const startedAt = Date.now()
   let result = await startPrepareAttestation(wallet)
 
   while (isQueuedAttestation(result)) {
@@ -160,13 +158,6 @@ export async function prepareAttestation(
       submissionMode: result.submission_mode,
       submissionDetail: result.submission_detail,
     })
-
-    if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
-      throw makePrepareError(
-        'job_failed',
-        `Attestation preparation timed out after ${Math.round(POLL_TIMEOUT_MS / 1000)}s.`,
-      )
-    }
 
     await delay(POLL_INTERVAL_MS)
     result = await getAttestationJob(result.job_id)

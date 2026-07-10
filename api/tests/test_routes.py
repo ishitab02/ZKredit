@@ -202,6 +202,9 @@ async def test_prepare_route_falls_back_to_fixture(monkeypatch: pytest.MonkeyPat
     async def _fake_load(address: str, sf: object, rt: object | None = None) -> None:
         return None
 
+    def _fake_prove(vector: object, address: str, **kwargs: object) -> object:
+        raise v1.Risc0ProverUnavailableError("toolchain unavailable")
+
     captured: dict[str, object] = {}
 
     def _fake_prepare(params: object, *, seal: object = None, journal: object = None) -> object:
@@ -217,7 +220,9 @@ async def test_prepare_route_falls_back_to_fixture(monkeypatch: pytest.MonkeyPat
         )
 
     monkeypatch.setattr(v1, "attest", _fake_attest)
+    monkeypatch.setattr(v1, "runpod_configured", lambda: False)
     monkeypatch.setattr(v1, "load_wallet_data", _fake_load)
+    monkeypatch.setattr(v1, "prove_wallet", _fake_prove)
     monkeypatch.setattr(v1, "prepare_attestation_submission", _fake_prepare)
 
     body, mode = await v1._build_prepared_attestation(
@@ -270,6 +275,30 @@ async def test_prepare_route_uses_live_receipt(monkeypatch: pytest.MonkeyPatch) 
     assert body.partial_xdr == "BBBB"
     assert body.submission_mode == "live_cosign"
     assert mode == "live_cosign"
+
+
+@pytest.mark.asyncio
+async def test_live_runpod_errors_do_not_fall_back_to_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When RunPod is configured, a proving failure should surface instead of hiding."""
+
+    async def _fake_load(address: str, sf: object, rt: object | None = None) -> None:
+        return None
+
+    async def _fake_attest(address: str, **kwargs: object) -> AttestationResult:
+        return _fake_result()
+
+    def _fake_prove(vector: object, address: str, **kwargs: object) -> object:
+        raise RuntimeError("runpod still queued")
+
+    monkeypatch.setattr(v1, "runpod_configured", lambda: True)
+    monkeypatch.setattr(v1, "attest", _fake_attest)
+    monkeypatch.setattr(v1, "load_wallet_data", _fake_load)
+    monkeypatch.setattr(v1, "prove_wallet", _fake_prove)
+
+    with pytest.raises(RuntimeError, match="runpod still queued"):
+        await v1._try_live_receipt(ADDRESS, object(), load_artifacts("model_store"))
 
 
 @pytest.mark.asyncio

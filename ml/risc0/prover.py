@@ -150,7 +150,10 @@ def prove_wallet(
     from ml.risc0.runpod_prover import runpod_configured, runpod_prove
 
     if runpod_configured():
-        return runpod_prove(json.loads(vector_json), commitment, timeout_s=timeout_s)
+        # RunPod already owns the full proof lifecycle. Do not impose a local
+        # wall-clock deadline here; the browser polls the job until it reaches a
+        # terminal state and the worker/runtime handles queueing and execution.
+        return runpod_prove(json.loads(vector_json), commitment, timeout_s=None)
 
     with tempfile.TemporaryDirectory(prefix="zkredit-risc0-") as tmp:
         tmp_path = Path(tmp)
