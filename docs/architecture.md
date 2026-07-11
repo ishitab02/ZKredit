@@ -316,7 +316,7 @@ If `zk_verified == false`, APR is increased by 200 bps. If no attestation exists
 
 ### 5.4 Deployment & Upgrade Rules
 
-- `scripts/deploy-testnet.sh` deploys all three contracts idempotently, sets the admin, and registers the API attestor address.
+- `scripts/deploy-testnet.sh` / `infra/scripts/deploy-mainnet.sh` deploy the contracts idempotently, set the admin, whitelist the live RISC Zero guest image id, and register the API attestor address. The mainnet script additionally requires `RISC0_IMAGE_ID_HEX` — the committed `image_id.bin` fixture is a demo id and must never be whitelisted on a live network.
 - Model deprecation is performed by the admin via a future `deprecate_model` function (not yet implemented). Attestations tied to a deprecated model are rejected by consumers.
 - Attestor rotation uses `scripts/migrate-attestor.sh`.
 
@@ -324,7 +324,7 @@ If `zk_verified == false`, APR is increased by 200 bps. If no attestation exists
 
 ## 6. ZK Proof Layer
 
-The RISC Zero pipeline (`/ml/risc0/`) proves the distilled RandomForest's inference. The guest ELF (`/ml/risc0/methods/`) runs the model on the private feature vector; the host (`/ml/risc0/host/`, driven by `prover.py`) produces the receipt. Proving is offloaded to a self-hosted Bento GPU cluster via `BONSAI_API_URL`/`BONSAI_API_KEY` (`bento_node.py`), with a 5 s `/health` pre-flight that falls back to a committed honest fixture when the prover is offline.
+The RISC Zero pipeline (`/ml/risc0/`) proves the distilled RandomForest's inference. The guest ELF (`/ml/risc0/methods/`) runs the model on the private feature vector. In production, proving is offloaded to a serverless RunPod GPU worker (`runpod_prover.py`, endpoint configured via `RUNPOD_API_KEY`/`RUNPOD_ENDPOINT_ID`) that bakes the same guest and returns `seal` + `journal` + `image_id`; `prover.py` calls it whenever RunPod is configured, so the deployed API image's own host binary is never the proving path in that mode. The self-hosted Bento GPU host (`ml/risc0/host/`, `BONSAI_API_URL`/`BONSAI_API_KEY`) remains as a fallback path for local/dev proving. Either path falls back to a committed honest fixture when the prover is offline, labeled explicitly (`submission_mode = demo_fixture_cosign`).
 
 Workflow:
 
@@ -389,9 +389,9 @@ Required UI elements:
 | Gate | Pass criterion | Fail action | Status |
 |---|---|---|---|
 | DG1 — Soroban Groth16 verifier | `env.crypto().bn254().pairing_check` verifies a known good proof | Use only `attest_with_hash`; `zk_verified = false`; add dispute window | **PASS** |
-| DG2 — RISC Zero proving (was: EZKL) | Distilled RandomForest proven in the zkVM → Groth16 receipt verifies on-chain | Hash-anchor only (`zk_verified = false`) | **PASS** — live on testnet; supersedes the EZKL/logreg gate per ADR-0001 |
+| DG2 — RISC Zero proving (was: EZKL) | Distilled RandomForest proven in the zkVM → Groth16 receipt verifies on-chain | Hash-anchor only (`zk_verified = false`) | **PASS** — live on Stellar mainnet since 2026-07-11 (RunPod GPU worker); supersedes the EZKL/logreg gate per ADR-0001 |
 | DG6 — Poseidon identity circuit | Proof-gated multi-wallet linking verifies on Soroban BN254 | Single-wallet only | **PASS** (2026-07-05) |
-| DG3 — BigQuery access | `crypto_stellar` returns rows | Horizon-only, 1-year window | Resolved (see `docs/`) |
+| DG3 — BigQuery access | `crypto_stellar` returns rows | Horizon-only, 1-year window | Resolved — see `ml/data/bigquery_ingest.py` |
 | DG4 — Blend testnet | Blend testnet contract can read `RiskAttestation` | MockLendingPool only; Blend becomes M2 target | MockLendingPool path |
 | DG5 — Synthetic label quality | Silhouette > 0.3 and ≥ 80% manual agreement | Unsupervised Isolation Forest + clustering | Synthetic labels (documented) |
 
