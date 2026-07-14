@@ -50,7 +50,7 @@ export default function Nav({ route = "landing" }: { route?: SiteRoute }) {
             aria-label="ZKredit — home"
           >
             <img
-              src="/logo.png"
+              src="/brand/zkredit-mark.svg"
               alt=""
               className="h-10 w-10 object-contain md:h-12 md:w-12"
               width={48}

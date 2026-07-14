@@ -1,0 +1,14 @@
+{
+  "name": "ZKredit — Private Credit, Publicly Proven",
+  "short_name": "ZKredit",
+  "description": "Zero-knowledge credit attestations that let any wallet prove creditworthiness without revealing its transactions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#03110C",
+  "theme_color": "#03110C",
+  "icons": [
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512" },
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any" }
+  ]
+}

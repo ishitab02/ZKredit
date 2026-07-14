@@ -76,7 +76,7 @@ export default function Footer({ route = "landing" }: { route?: SiteRoute }) {
               className="inline-flex items-center gap-3 text-fog transition-colors hover:text-teal-bright"
               aria-label="ZKredit — home"
             >
-              <img src="/logo.png" alt="" className="h-12 w-12 object-contain" width={48} height={48} />
+              <img src="/brand/zkredit-mark.svg" alt="" className="h-12 w-12 object-contain" width={48} height={48} />
               <span className="font-display text-2xl font-semibold tracking-tight">ZKredit</span>
             </a>
             <p className="mt-5 text-sm leading-relaxed text-fog-muted">
