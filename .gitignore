@@ -37,6 +37,9 @@ test_snapshots/
 # --- macOS ---
 .DS_Store
 
+# --- Editor config ---
+.vscode/
+
 # --- Secrets / local config ---
 .env
 .env.local
