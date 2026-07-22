@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <title>ZKredit</title>
+  <rect width="240" height="240" rx="48" fill="#03140F"></rect>
+  <g transform="translate(120 120) scale(1.15) translate(-120 -120)">
+    <polygon points="208,40 180,68 32,200 60,172" fill="#F2FFFB"></polygon>
+    <polygon points="78,40 208,40 180,68 50,68" fill="#A9F2E2"></polygon>
+    <polygon points="60,172 190,172 162,200 32,200" fill="#A9F2E2"></polygon>
+  </g>
+</svg>

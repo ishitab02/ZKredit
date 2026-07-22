@@ -3,7 +3,7 @@ import { ArrowUpRight, Github, XLogo } from "./Icons";
 import { fadeUp, inView, stagger } from "../lib/motion";
 import { ATTESTATION_PATH, LANDING_PATH, type SiteRoute } from "../lib/navigation";
 
-const DOCS_URL = "https://github.com/ishitab02/ZKredit/blob/main/docs/architecture.md";
+const DOCS_URL = "https://zkredit-docs.vercel.app";
 const GITHUB_URL = "https://github.com/ishitab02/ZKredit";
 const X_URL = "https://x.com/Zkred_it";
 
